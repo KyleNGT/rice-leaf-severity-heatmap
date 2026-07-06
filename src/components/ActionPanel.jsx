@@ -1,4 +1,5 @@
 import { STEPS, HEATMAP_MIN_OPACITY, HEATMAP_MAX_OPACITY } from '../constants/constants';
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 
 /**
  * ============================================================
@@ -27,7 +28,93 @@ export default function ActionPanel({
   drawingAction,
   onDrawingActionChange,
   drawingState,
+  onPlacePoint,
+  onUndoPoint,
+  onFinishShape,
 }) {
+  const isMobile = useIsMobileViewport();
+
+  // ── Step 1: Boundary — mobile center-anchored flow ─────────
+  if (currentStep === STEPS.BOUNDARY && isMobile) {
+    const vertexCount = drawingState?.vertexCount || 0;
+    const pointsNeeded = Math.max(0, 3 - vertexCount);
+
+    return (
+      <div className="action-panel">
+        <div className="action-card">
+          <h3 className="action-title">
+            <span className="action-icon">📐</span>
+            Define Field Boundary
+          </h3>
+
+          <p className="action-desc">
+            {!boundary && vertexCount === 0 &&
+              'Pan and zoom so the crosshair marks your first corner, then tap "Place Point".'}
+            {!boundary && vertexCount > 0 && vertexCount < 3 &&
+              `${vertexCount}/3 minimum points placed. Move the crosshair to the next corner and tap "Place Point".`}
+            {!boundary && vertexCount >= 3 &&
+              `${vertexCount} points placed. Add more corners or tap "Finish Shape" to close the boundary.`}
+            {boundary && 'Boundary set! You can edit, redraw, or continue to sampling.'}
+          </p>
+
+          {!boundary && (
+            <div className="boundary-tools">
+              <button className="btn btn-tool" onClick={onPlacePoint}>
+                <span className="btn-tool-icon">📍</span>
+                <span className="btn-tool-label">Place Point</span>
+              </button>
+              <button className="btn btn-tool" onClick={onUndoPoint} disabled={vertexCount === 0}>
+                <span className="btn-tool-icon">↩️</span>
+                <span className="btn-tool-label">Undo</span>
+              </button>
+            </div>
+          )}
+
+          {boundary && (
+            <div className="boundary-tools">
+              <button
+                className={`btn btn-tool ${drawingAction === 'edit' ? 'btn-tool-active' : ''}`}
+                onClick={() =>
+                  onDrawingActionChange(drawingAction === 'edit' ? null : 'edit')
+                }
+              >
+                <span className="btn-tool-icon">✋</span>
+                <span className="btn-tool-label">
+                  {drawingAction === 'edit' ? 'Editing...' : 'Edit Shape'}
+                </span>
+              </button>
+              <button className="btn btn-tool" onClick={() => onDrawingActionChange('clear')}>
+                <span className="btn-tool-icon">🗑️</span>
+                <span className="btn-tool-label">Clear Boundary</span>
+              </button>
+            </div>
+          )}
+
+          {vertexCount > 0 && !boundary && (
+            <div className="boundary-status">
+              <span className="boundary-status-dot" />
+              <span className="boundary-status-text">
+                Drawing active — {vertexCount} {vertexCount === 1 ? 'vertex' : 'vertices'} placed
+              </span>
+            </div>
+          )}
+
+          <button
+            className="btn btn-primary btn-full"
+            disabled={!boundary && vertexCount < 3}
+            onClick={boundary ? onAdvanceStep : onFinishShape}
+          >
+            {boundary
+              ? 'Continue to Sampling →'
+              : vertexCount < 3
+              ? `Place ${pointsNeeded} more point${pointsNeeded === 1 ? '' : 's'}`
+              : 'Finish Shape'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Step 1: Boundary ───────────────────────────────────────
   if (currentStep === STEPS.BOUNDARY) {
     const isDrawing = drawingState?.isDrawing;
@@ -83,15 +170,11 @@ export default function ActionPanel({
                   </span>
                 </button>
                 <button
-                  className={`btn btn-tool ${drawingAction === 'delete' ? 'btn-tool-active' : ''}`}
-                  onClick={() =>
-                    onDrawingActionChange(drawingAction === 'delete' ? null : 'delete')
-                  }
+                  className="btn btn-tool"
+                  onClick={() => onDrawingActionChange('clear')}
                 >
                   <span className="btn-tool-icon">🗑️</span>
-                  <span className="btn-tool-label">
-                    {drawingAction === 'delete' ? 'Tap shape to delete' : 'Clear Boundary'}
-                  </span>
+                  <span className="btn-tool-label">Clear Boundary</span>
                 </button>
               </>
             )}

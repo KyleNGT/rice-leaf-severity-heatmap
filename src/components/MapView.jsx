@@ -8,9 +8,11 @@ import {
   ESRI_ATTRIBUTION,
 } from '../constants/constants';
 import BoundaryDrawer from './BoundaryDrawer';
+import MobileBoundaryDrawer from './MobileBoundaryDrawer';
 import SampleMarker from './SampleMarker';
 import HeatmapOverlay from './HeatmapOverlay';
 import ManualPinModal from './ManualPinModal';
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 
 /**
  * ============================================================
@@ -35,10 +37,13 @@ export default function MapView({
   onManualPinConfirm,
   onManualPinCancel,
   drawingAction,
+  onDrawingActionChange,
   onDrawingStateChange,
+  mobileDrawerRef,
 }) {
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [isLocating, setIsLocating] = useState(true);
+  const isMobile = useIsMobileViewport();
 
   // Attempt GPS centering on mount
   useEffect(() => {
@@ -87,8 +92,19 @@ export default function MapView({
         isActive={currentStep === 'boundary'}
         onBoundaryCreated={onBoundaryCreated}
         drawingAction={drawingAction}
+        onDrawingActionChange={onDrawingActionChange}
         onDrawingStateChange={onDrawingStateChange}
       />
+
+      {/* Center-anchored drawing for mobile — only during initial placement */}
+      {currentStep === 'boundary' && isMobile && !boundary && (
+        <MobileBoundaryDrawer
+          isActive={currentStep === 'boundary'}
+          drawerRef={mobileDrawerRef}
+          onBoundaryCreated={onBoundaryCreated}
+          onDrawingStateChange={onDrawingStateChange}
+        />
+      )}
 
       {/* Sample markers */}
       {samples.map((sample, idx) => (

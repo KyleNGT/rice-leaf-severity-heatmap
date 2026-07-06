@@ -8,14 +8,15 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
  * BoundaryDrawer — Geoman Polygon Drawing (Custom UI)
  * ============================================================
  * Hides the default Geoman toolbar entirely. Instead, exposes
- * draw/edit/delete actions via `drawingAction` prop so the
+ * draw/edit/clear actions via `drawingAction` prop so the
  * ActionPanel can drive drawing with clearly-labeled, themed
  * buttons.
  *
  * Props:
  *   isActive        — Whether this component should initialise
  *   onBoundaryCreated(geojson | null)  — Boundary state setter
- *   drawingAction   — 'draw' | 'edit' | 'delete' | null
+ *   drawingAction   — 'draw' | 'edit' | 'clear' | null
+ *   onDrawingActionChange(action) — used to reset 'clear' back to null
  *   onDrawingStateChange({ isDrawing, vertexCount }) — feedback
  *
  * Heuristics applied:
@@ -28,6 +29,7 @@ export default function BoundaryDrawer({
   onBoundaryCreated,
   isActive,
   drawingAction,
+  onDrawingActionChange,
   onDrawingStateChange,
 }) {
   const map = useMap();
@@ -40,6 +42,7 @@ export default function BoundaryDrawer({
 
     // Global drawing options — enlarged for mobile
     map.pm.setGlobalOptions({
+      tooltips: false,
       allowSelfIntersection: false,
       snapVertex: true,
       snapMiddle: false,
@@ -82,17 +85,23 @@ export default function BoundaryDrawer({
       onDrawingStateChange?.({ isDrawing: false, vertexCount: 0 });
     };
 
-    // Track vertex placement for live feedback
+    // Track vertex placement for live feedback — pm:vertexadded fires on the
+    // working layer itself, not the map, so the listener must be bound there.
+    // The in-progress working layer is a plain L.Polyline (flat getLatLngs()),
+    // not yet a polygon with a nested ring, so it must be counted flat.
     const handleVertexAdded = (e) => {
-      const count = e.workingLayer?.getLatLngs()?.[0]?.length || 0;
+      const latlngs = e.layer?.getLatLngs?.() || [];
+      const count = Array.isArray(latlngs[0]) ? latlngs[0].length : latlngs.length;
       onDrawingStateChange?.({ isDrawing: true, vertexCount: count });
     };
 
-    const handleDrawStart = () => {
+    const handleDrawStart = (e) => {
       onDrawingStateChange?.({ isDrawing: true, vertexCount: 0 });
+      e.workingLayer?.on('pm:vertexadded', handleVertexAdded);
     };
 
-    const handleDrawEnd = () => {
+    const handleDrawEnd = (e) => {
+      e.workingLayer?.off('pm:vertexadded', handleVertexAdded);
       onDrawingStateChange?.({ isDrawing: false, vertexCount: 0 });
     };
 
@@ -101,7 +110,6 @@ export default function BoundaryDrawer({
     map.on('pm:remove', handleRemove);
     map.on('pm:drawstart', handleDrawStart);
     map.on('pm:drawend', handleDrawEnd);
-    map.on('pm:vertexadded', handleVertexAdded);
 
     return () => {
       map.off('pm:create', handleCreate);
@@ -109,7 +117,6 @@ export default function BoundaryDrawer({
       map.off('pm:remove', handleRemove);
       map.off('pm:drawstart', handleDrawStart);
       map.off('pm:drawend', handleDrawEnd);
-      map.off('pm:vertexadded', handleVertexAdded);
       map.pm.disableDraw();
       map.pm.disableGlobalEditMode();
       map.pm.disableGlobalRemovalMode();
@@ -132,10 +139,18 @@ export default function BoundaryDrawer({
       map.pm.enableDraw('Polygon');
     } else if (drawingAction === 'edit') {
       map.pm.enableGlobalEditMode();
-    } else if (drawingAction === 'delete') {
-      map.pm.enableGlobalRemovalMode();
+    } else if (drawingAction === 'clear') {
+      // Immediate clear — no "tap a shape to delete" chooser, since there's
+      // only ever one boundary polygon. Removes via Geoman's own layer
+      // registry rather than layerRef so it also covers polygons created by
+      // MobileBoundaryDrawer (which never populates layerRef).
+      map.pm.getGeomanLayers().forEach((layer) => layer.remove());
+      layerRef.current = null;
+      onBoundaryCreated(null);
+      onDrawingStateChange?.({ isDrawing: false, vertexCount: 0 });
+      onDrawingActionChange?.(null);
     }
-  }, [map, isActive, drawingAction]);
+  }, [map, isActive, drawingAction, onBoundaryCreated, onDrawingActionChange, onDrawingStateChange]);
 
   return null; // No DOM — the ActionPanel renders the custom buttons
 }

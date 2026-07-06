@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import * as turf from '@turf/turf';
 import MapView from './components/MapView';
 import StepperBar from './components/StepperBar';
@@ -7,6 +7,7 @@ import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
 import { useExifGps } from './hooks/useExifGps';
+import { useIsMobileViewport } from './hooks/useIsMobileViewport';
 import { analyzePlantImage } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
 import { STEPS, HEATMAP_DEFAULT_OPACITY } from './constants/constants';
@@ -43,11 +44,18 @@ export default function App() {
   const [heatmapOpacity, setHeatmapOpacity] = useState(HEATMAP_DEFAULT_OPACITY);
 
   // ── Boundary Drawing UI State ──────────────────────────────
-  const [drawingAction, setDrawingAction] = useState(null); // 'draw' | 'edit' | 'delete' | null
+  const [drawingAction, setDrawingAction] = useState(null); // 'draw' | 'edit' | 'clear' | null
   const [drawingState, setDrawingState] = useState({ isDrawing: false, vertexCount: 0 });
 
   // ── Hooks ──────────────────────────────────────────────────
   const { extractGps } = useExifGps();
+  const isMobile = useIsMobileViewport();
+  const mobileDrawerRef = useRef(null);
+
+  // ── Mobile Center-Anchored Drawing Handlers ────────────────
+  const handlePlacePoint = useCallback(() => mobileDrawerRef.current?.placePoint(), []);
+  const handleUndoPoint = useCallback(() => mobileDrawerRef.current?.undoLast(), []);
+  const handleFinishShape = useCallback(() => mobileDrawerRef.current?.finishShape(), []);
 
   // ── Boundary Handler ───────────────────────────────────────
   const handleBoundaryCreated = useCallback((geoJSON) => {
@@ -206,8 +214,17 @@ export default function App() {
         onManualPinConfirm={handleManualPinConfirm}
         onManualPinCancel={handleManualPinCancel}
         drawingAction={drawingAction}
+        onDrawingActionChange={setDrawingAction}
         onDrawingStateChange={setDrawingState}
+        mobileDrawerRef={mobileDrawerRef}
       />
+
+      {/* Center-anchored crosshair — mobile boundary drawing only */}
+      {currentStep === STEPS.BOUNDARY && isMobile && !boundary && (
+        <div className="map-crosshair" aria-hidden="true">
+          <span className="map-crosshair-icon">📍</span>
+        </div>
+      )}
 
       {/* Sampling panel — visible during sampling step */}
       {currentStep === STEPS.SAMPLING && !manualPinMode && (
@@ -231,6 +248,9 @@ export default function App() {
         drawingAction={drawingAction}
         onDrawingActionChange={setDrawingAction}
         drawingState={drawingState}
+        onPlacePoint={handlePlacePoint}
+        onUndoPoint={handleUndoPoint}
+        onFinishShape={handleFinishShape}
       />
 
       {/* Color legend — visible when heatmap is shown */}

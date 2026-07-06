@@ -227,6 +227,23 @@ html, body, #root {
   display: none !important;
 }
 
+/* ── Mobile Center-Anchored Crosshair ───────────────────────── */
+.map-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -100%);
+  z-index: var(--z-panel);
+  pointer-events: none;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.map-crosshair-icon {
+  display: block;
+  font-size: 2rem;
+  line-height: 1;
+}
+
 /* ── Custom Boundary Tool Buttons ───────────────────────────── */
 .boundary-tools {
   display: flex;
