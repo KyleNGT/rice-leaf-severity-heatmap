@@ -1,0 +1,248 @@
+import { useState, useCallback } from 'react';
+import * as turf from '@turf/turf';
+import MapView from './components/MapView';
+import StepperBar from './components/StepperBar';
+import SamplePanel from './components/SamplePanel';
+import ActionPanel from './components/ActionPanel';
+import ColorLegend from './components/ColorLegend';
+import LoadingOverlay from './components/LoadingOverlay';
+import { useExifGps } from './hooks/useExifGps';
+import { analyzePlantImage } from './services/mockMLService';
+import { computeIDW } from './utils/idwInterpolation';
+import { STEPS, HEATMAP_DEFAULT_OPACITY } from './constants/constants';
+import './App.css';
+
+/**
+ * ============================================================
+ * App — Root State Machine
+ * ============================================================
+ * Orchestrates the 3-step workflow:
+ *   1. BOUNDARY  — Draw field polygon
+ *   2. SAMPLING  — Capture/upload plant images (max 50)
+ *   3. HEATMAP   — IDW computation + canvas overlay
+ */
+export default function App() {
+  // ── Workflow State ──────────────────────────────────────────
+  const [currentStep, setCurrentStep] = useState(STEPS.BOUNDARY);
+
+  // ── Boundary State ─────────────────────────────────────────
+  const [boundary, setBoundary] = useState(null);
+
+  // ── Sampling State ─────────────────────────────────────────
+  const [samples, setSamples] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [loadingProgress, setLoadingProgress] = useState(null);
+
+  // ── Manual Pin State ───────────────────────────────────────
+  const [manualPinMode, setManualPinMode] = useState(false);
+  const [pendingImage, setPendingImage] = useState(null);
+
+  // ── Heatmap State ──────────────────────────────────────────
+  const [heatmapData, setHeatmapData] = useState(null);
+  const [heatmapOpacity, setHeatmapOpacity] = useState(HEATMAP_DEFAULT_OPACITY);
+
+  // ── Boundary Drawing UI State ──────────────────────────────
+  const [drawingAction, setDrawingAction] = useState(null); // 'draw' | 'edit' | 'delete' | null
+  const [drawingState, setDrawingState] = useState({ isDrawing: false, vertexCount: 0 });
+
+  // ── Hooks ──────────────────────────────────────────────────
+  const { extractGps } = useExifGps();
+
+  // ── Boundary Handler ───────────────────────────────────────
+  const handleBoundaryCreated = useCallback((geoJSON) => {
+    setBoundary(geoJSON);
+  }, []);
+
+  // ── Step Navigation ────────────────────────────────────────
+  const advanceToSampling = useCallback(() => {
+    if (boundary) {
+      setDrawingAction(null);
+      setDrawingState({ isDrawing: false, vertexCount: 0 });
+      setCurrentStep(STEPS.SAMPLING);
+    }
+  }, [boundary]);
+
+  // ── Image Processing Pipeline ──────────────────────────────
+  const handleImageSelected = useCallback(
+    async (file, _source) => {
+      // 1. Create thumbnail for popup display
+      const thumbnail = URL.createObjectURL(file);
+
+      // 2. Extract GPS from EXIF
+      const gps = await extractGps(file);
+
+      if (gps.hasGps) {
+        // Validate point is inside boundary
+        const point = turf.point([gps.lng, gps.lat]);
+        const isInside = turf.booleanPointInPolygon(point, boundary);
+
+        if (!isInside) {
+          // If GPS is outside boundary, fall back to manual pin
+          setPendingImage({ file, thumbnail });
+          setManualPinMode(true);
+          return;
+        }
+
+        // Process directly with extracted GPS
+        await processNewSample(file, thumbnail, gps.lat, gps.lng);
+      } else {
+        // No GPS data — trigger manual pin placement
+        setPendingImage({ file, thumbnail });
+        setManualPinMode(true);
+      }
+    },
+    [boundary, extractGps]
+  );
+
+  // ── Manual Pin Handlers ────────────────────────────────────
+  const handleManualPinConfirm = useCallback(
+    async (coords) => {
+      setManualPinMode(false);
+      if (pendingImage) {
+        await processNewSample(
+          pendingImage.file,
+          pendingImage.thumbnail,
+          coords.lat,
+          coords.lng
+        );
+        setPendingImage(null);
+      }
+    },
+    [pendingImage]
+  );
+
+  const handleManualPinCancel = useCallback(() => {
+    setManualPinMode(false);
+    setPendingImage(null);
+  }, []);
+
+  // ── Sample Processing ──────────────────────────────────────
+  async function processNewSample(file, thumbnail, lat, lng) {
+    setIsProcessing(true);
+    setLoadingMessage('Analyzing leaf image...');
+
+    try {
+      const result = await analyzePlantImage(file);
+
+      const newSample = {
+        id: `sample-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        lat,
+        lng,
+        severity: result.severity,
+        diseaseDetected: result.diseaseDetected,
+        diseaseName: result.diseaseName,
+        confidence: result.confidence,
+        thumbnail,
+      };
+
+      setSamples((prev) => [...prev, newSample]);
+    } catch (err) {
+      console.error('Sample processing failed:', err);
+    } finally {
+      setIsProcessing(false);
+      setLoadingMessage('');
+    }
+  }
+
+  // ── Heatmap Generation ─────────────────────────────────────
+  const handleGenerateHeatmap = useCallback(async () => {
+    if (samples.length < 2 || !boundary) return;
+
+    setIsProcessing(true);
+    setLoadingMessage('Computing disease pressure map...');
+    setLoadingProgress(0);
+    setCurrentStep(STEPS.HEATMAP);
+
+    try {
+      const result = await computeIDW(samples, boundary, (progress) => {
+        setLoadingProgress(progress);
+      });
+
+      setHeatmapData(result);
+    } catch (err) {
+      console.error('IDW computation failed:', err);
+    } finally {
+      setIsProcessing(false);
+      setLoadingMessage('');
+      setLoadingProgress(null);
+    }
+  }, [samples, boundary]);
+
+  // ── Reset ──────────────────────────────────────────────────
+  const handleReset = useCallback(() => {
+    setCurrentStep(STEPS.BOUNDARY);
+    setBoundary(null);
+    setSamples([]);
+    setHeatmapData(null);
+    setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
+    setManualPinMode(false);
+    setPendingImage(null);
+    // Force a full page reload to reset Leaflet + Geoman state cleanly
+    window.location.reload();
+  }, []);
+
+  // ── Render ─────────────────────────────────────────────────
+  return (
+    <div className="app">
+      {/* Header */}
+      <header className="app-header">
+        <h1 className="app-title">
+          <span className="app-logo">🌾</span>
+          Rice Leaf Severity
+        </h1>
+        <StepperBar currentStep={currentStep} />
+      </header>
+
+      {/* Map fills the viewport */}
+      <MapView
+        currentStep={currentStep}
+        boundary={boundary}
+        onBoundaryCreated={handleBoundaryCreated}
+        samples={samples}
+        heatmapData={heatmapData}
+        heatmapOpacity={heatmapOpacity}
+        manualPinMode={manualPinMode}
+        onManualPinConfirm={handleManualPinConfirm}
+        onManualPinCancel={handleManualPinCancel}
+        drawingAction={drawingAction}
+        onDrawingStateChange={setDrawingState}
+      />
+
+      {/* Sampling panel — visible during sampling step */}
+      {currentStep === STEPS.SAMPLING && !manualPinMode && (
+        <SamplePanel
+          sampleCount={samples.length}
+          onImageSelected={handleImageSelected}
+          onGenerateHeatmap={handleGenerateHeatmap}
+          disabled={isProcessing}
+        />
+      )}
+
+      {/* Action panel — always visible */}
+      <ActionPanel
+        currentStep={currentStep}
+        boundary={boundary}
+        onAdvanceStep={advanceToSampling}
+        onReset={handleReset}
+        heatmapOpacity={heatmapOpacity}
+        onOpacityChange={setHeatmapOpacity}
+        heatmapData={heatmapData}
+        drawingAction={drawingAction}
+        onDrawingActionChange={setDrawingAction}
+        drawingState={drawingState}
+      />
+
+      {/* Color legend — visible when heatmap is shown */}
+      {currentStep === STEPS.HEATMAP && heatmapData && <ColorLegend />}
+
+      {/* Loading overlay */}
+      {isProcessing && (
+        <LoadingOverlay
+          message={loadingMessage}
+          progress={loadingProgress}
+        />
+      )}
+    </div>
+  );
+}
