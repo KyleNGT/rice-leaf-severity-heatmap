@@ -16,11 +16,9 @@
  */
 
 const MOCK_DISEASES = [
-  'Rice Blast',
+  'Leaf Blast',
   'Bacterial Leaf Blight',
   'Brown Spot',
-  'Tungro',
-  'Sheath Blight',
 ];
 
 /**

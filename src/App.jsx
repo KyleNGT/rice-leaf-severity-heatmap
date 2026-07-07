@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import * as turf from '@turf/turf';
 import MapView from './components/MapView';
 import StepperBar from './components/StepperBar';
@@ -10,7 +10,7 @@ import { useExifGps } from './hooks/useExifGps';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
 import { analyzePlantImage } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
-import { STEPS, HEATMAP_DEFAULT_OPACITY } from './constants/constants';
+import { STEPS, HEATMAP_DEFAULT_OPACITY, MAX_SAMPLES } from './constants/constants';
 import './App.css';
 
 /**
@@ -35,9 +35,14 @@ export default function App() {
   const [loadingMessage, setLoadingMessage] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(null);
 
-  // ── Manual Pin State ───────────────────────────────────────
-  const [manualPinMode, setManualPinMode] = useState(false);
-  const [pendingImage, setPendingImage] = useState(null);
+  // ── Draft Sample State ──────────────────────────────────────
+  // { file, thumbnail, lat, lng, analyzing, severity, diseaseDetected,
+  //   diseaseName, confidence } — an in-progress sample being edited
+  // in the SamplePanel card before the user commits it with "Add Sample".
+  const [draftSample, setDraftSample] = useState(null);
+
+  // ── Map Fullscreen State ────────────────────────────────────
+  const [mapFullscreen, setMapFullscreen] = useState(false);
 
   // ── Heatmap State ──────────────────────────────────────────
   const [heatmapData, setHeatmapData] = useState(null);
@@ -72,86 +77,99 @@ export default function App() {
   }, [boundary]);
 
   // ── Image Processing Pipeline ──────────────────────────────
+  // Selecting a photo (camera or gallery) replaces any uncommitted
+  // draft with a new one: thumbnail + EXIF-prefilled (or blank)
+  // coordinates immediately, then the mock ML analysis merges in
+  // once it resolves. The draft is only added to `samples` when the
+  // user taps "Add Sample" in SamplePanel.
   const handleImageSelected = useCallback(
-    async (file, _source) => {
-      // 1. Create thumbnail for popup display
+    async (file) => {
       const thumbnail = URL.createObjectURL(file);
-
-      // 2. Extract GPS from EXIF
       const gps = await extractGps(file);
 
-      if (gps.hasGps) {
-        // Validate point is inside boundary
-        const point = turf.point([gps.lng, gps.lat]);
-        const isInside = turf.booleanPointInPolygon(point, boundary);
+      setDraftSample({
+        file,
+        thumbnail,
+        lat: gps.hasGps ? gps.lat.toFixed(6) : '',
+        lng: gps.hasGps ? gps.lng.toFixed(6) : '',
+        analyzing: true,
+        severity: null,
+        diseaseDetected: null,
+        diseaseName: null,
+        confidence: null,
+      });
 
-        if (!isInside) {
-          // If GPS is outside boundary, fall back to manual pin
-          setPendingImage({ file, thumbnail });
-          setManualPinMode(true);
-          return;
-        }
-
-        // Process directly with extracted GPS
-        await processNewSample(file, thumbnail, gps.lat, gps.lng);
-      } else {
-        // No GPS data — trigger manual pin placement
-        setPendingImage({ file, thumbnail });
-        setManualPinMode(true);
-      }
-    },
-    [boundary, extractGps]
-  );
-
-  // ── Manual Pin Handlers ────────────────────────────────────
-  const handleManualPinConfirm = useCallback(
-    async (coords) => {
-      setManualPinMode(false);
-      if (pendingImage) {
-        await processNewSample(
-          pendingImage.file,
-          pendingImage.thumbnail,
-          coords.lat,
-          coords.lng
+      try {
+        const result = await analyzePlantImage(file);
+        setDraftSample((prev) =>
+          // Bail if the draft was replaced/cleared while analyzing
+          prev && prev.file === file
+            ? {
+                ...prev,
+                analyzing: false,
+                severity: result.severity,
+                diseaseDetected: result.diseaseDetected,
+                diseaseName: result.diseaseName,
+                confidence: result.confidence,
+              }
+            : prev
         );
-        setPendingImage(null);
+      } catch (err) {
+        console.error('Sample analysis failed:', err);
+        setDraftSample((prev) =>
+          prev && prev.file === file ? { ...prev, analyzing: false } : prev
+        );
       }
     },
-    [pendingImage]
+    [extractGps]
   );
 
-  const handleManualPinCancel = useCallback(() => {
-    setManualPinMode(false);
-    setPendingImage(null);
+  // ── Draft Coordinate Editing ────────────────────────────────
+  const handleDraftCoordChange = useCallback((field, value) => {
+    setDraftSample((prev) => (prev ? { ...prev, [field]: value } : prev));
   }, []);
 
-  // ── Sample Processing ──────────────────────────────────────
-  async function processNewSample(file, thumbnail, lat, lng) {
-    setIsProcessing(true);
-    setLoadingMessage('Analyzing leaf image...');
+  // ── Draft Validity (parsed coords + inside-boundary check) ──
+  const draftValidity = useMemo(() => {
+    if (!draftSample) return { hasCoords: false, isInside: false, isValid: false };
 
-    try {
-      const result = await analyzePlantImage(file);
+    const lat = parseFloat(draftSample.lat);
+    const lng = parseFloat(draftSample.lng);
+    const hasCoords =
+      draftSample.lat !== '' &&
+      draftSample.lng !== '' &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng);
 
-      const newSample = {
-        id: `sample-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        lat,
-        lng,
-        severity: result.severity,
-        diseaseDetected: result.diseaseDetected,
-        diseaseName: result.diseaseName,
-        confidence: result.confidence,
-        thumbnail,
-      };
-
-      setSamples((prev) => [...prev, newSample]);
-    } catch (err) {
-      console.error('Sample processing failed:', err);
-    } finally {
-      setIsProcessing(false);
-      setLoadingMessage('');
+    if (!hasCoords || !boundary) {
+      return { hasCoords, isInside: false, isValid: false };
     }
-  }
+
+    const point = turf.point([lng, lat]);
+    const isInside = turf.booleanPointInPolygon(point, boundary);
+
+    return { hasCoords, isInside, isValid: isInside };
+  }, [draftSample, boundary]);
+
+  // ── Commit Draft Sample ──────────────────────────────────────
+  const handleAddSample = useCallback(() => {
+    if (!draftSample || draftSample.analyzing || !draftValidity.isValid) return;
+    if (samples.length >= MAX_SAMPLES) return;
+
+    const newSample = {
+      id: `sample-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      lat: parseFloat(draftSample.lat),
+      lng: parseFloat(draftSample.lng),
+      severity: draftSample.severity,
+      diseaseDetected: draftSample.diseaseDetected,
+      diseaseName: draftSample.diseaseName,
+      confidence: draftSample.confidence,
+      thumbnail: draftSample.thumbnail,
+    };
+
+    setSamples((prev) => [...prev, newSample]);
+    setDraftSample(null);
+  }, [draftSample, draftValidity, samples.length]);
 
   // ── Heatmap Generation ─────────────────────────────────────
   const handleGenerateHeatmap = useCallback(async () => {
@@ -184,14 +202,23 @@ export default function App() {
     setSamples([]);
     setHeatmapData(null);
     setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
-    setManualPinMode(false);
-    setPendingImage(null);
+    setDraftSample(null);
+    setMapFullscreen(false);
     // Force a full page reload to reset Leaflet + Geoman state cleanly
     window.location.reload();
   }, []);
 
   // ── Derived Flags ───────────────────────────────────────────
-  const isSamplingSplit = currentStep === STEPS.SAMPLING && !manualPinMode;
+  const isSamplingSplit = currentStep === STEPS.SAMPLING && !mapFullscreen;
+  const canAddSample =
+    !!draftSample &&
+    !draftSample.analyzing &&
+    draftValidity.isValid &&
+    samples.length < MAX_SAMPLES;
+  const coordWarning =
+    draftSample && draftValidity.hasCoords && !draftValidity.isInside
+      ? 'This point is outside your field boundary.'
+      : '';
 
   // ── Render ─────────────────────────────────────────────────
   return (
@@ -211,10 +238,14 @@ export default function App() {
         {/* Upload panel — visible during sampling step, occupies its half */}
         {isSamplingSplit && (
           <SamplePanel
-            sampleCount={samples.length}
+            draft={draftSample}
             onImageSelected={handleImageSelected}
-            onGenerateHeatmap={handleGenerateHeatmap}
+            onCoordChange={handleDraftCoordChange}
+            onAddSample={handleAddSample}
+            canAddSample={canAddSample}
+            coordWarning={coordWarning}
             disabled={isProcessing}
+            isMaxed={samples.length >= MAX_SAMPLES}
           />
         )}
 
@@ -234,9 +265,8 @@ export default function App() {
                 samples={samples}
                 heatmapData={heatmapData}
                 heatmapOpacity={heatmapOpacity}
-                manualPinMode={manualPinMode}
-                onManualPinConfirm={handleManualPinConfirm}
-                onManualPinCancel={handleManualPinCancel}
+                draftSample={draftSample}
+                mapFullscreen={mapFullscreen}
                 drawingAction={drawingAction}
                 onDrawingActionChange={setDrawingAction}
                 onDrawingStateChange={setDrawingState}
@@ -249,7 +279,58 @@ export default function App() {
                   <span className="map-crosshair-icon">📍</span>
                 </div>
               )}
+
+              {/* Enlarge — take the map fullscreen during sampling */}
+              {isSamplingSplit && (
+                <button
+                  type="button"
+                  className="map-enlarge-btn"
+                  onClick={() => setMapFullscreen(true)}
+                >
+                  <span aria-hidden="true">⛶</span>
+                  <span>Enlarge</span>
+                </button>
+              )}
+
+              {/* Back — return from the fullscreen map takeover */}
+              {mapFullscreen && currentStep === STEPS.SAMPLING && (
+                <button
+                  type="button"
+                  className="map-back-btn"
+                  onClick={() => setMapFullscreen(false)}
+                >
+                  <span aria-hidden="true">←</span>
+                  <span>Back</span>
+                </button>
+              )}
             </div>
+
+            {/* Sample counter + Generate Heatmap — under the map, in
+                the "Your Field" card (moved from the upload panel) */}
+            {isSamplingSplit && (
+              <div className="map-footer">
+                <div className="upload-counter">
+                  <span>
+                    Samples: <span className="upload-counter-value">{samples.length}</span> /{' '}
+                    {MAX_SAMPLES}
+                  </span>
+                  {samples.length >= MAX_SAMPLES && (
+                    <span className="upload-counter-maxed">Maximum reached</span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="upload-btn-generate"
+                  disabled={samples.length < 2}
+                  onClick={handleGenerateHeatmap}
+                >
+                  {samples.length < 2
+                    ? `Need at least 2 samples (${samples.length}/2)`
+                    : `🗺️ Generate Heatmap (${samples.length} samples)`}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

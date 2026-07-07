@@ -262,6 +262,17 @@ html, body, #root {
 }
 
 .workspace--split .map-card {
+  /* Same light-theme tokens as .upload-panel, scoped here too so the
+     moved sample counter / Generate Heatmap button (which reuse the
+     .upload-counter / .upload-btn-generate classes) render correctly. */
+  --upload-canvas: #f9fafb;
+  --upload-card-border: #e5e7eb;
+  --upload-text: #212222;
+  --upload-text-muted: #6b7280;
+  --upload-emerald: #046307;
+  --upload-warning: #d7e051;
+  --upload-danger: #ed5d54;
+
   gap: var(--space-sm);
   padding: var(--space-lg);
   background: #ffffff;
@@ -269,6 +280,7 @@ html, body, #root {
   border-radius: var(--radius-md);
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--upload-text);
 }
 
 .workspace--split .map-title {
@@ -330,6 +342,59 @@ html, body, #root {
   display: block;
   font-size: 2rem;
   line-height: 1;
+}
+
+/* ── Map Enlarge / Back Overlay Buttons ──────────────────────── */
+.map-enlarge-btn,
+.map-back-btn {
+  position: absolute;
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #212222;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  transition: transform 0.1s ease;
+}
+
+.map-enlarge-btn:active,
+.map-back-btn:active {
+  transform: scale(0.96);
+}
+
+/* Enlarge only ever renders inside the split's boxed .map-box, which is
+   already inset below the header, so a small offset is enough. */
+.map-enlarge-btn {
+  top: var(--space-sm);
+  right: var(--space-sm);
+}
+
+/* Back only ever renders full-bleed (fullscreen mode drops the split's
+   header-clearing padding), so it needs enough top offset to sit below
+   the always-on-top .app-header instead of underneath it. */
+.map-back-btn {
+  top: max(64px, calc(52px + var(--space-sm)));
+  left: var(--space-sm);
+}
+
+/* ── Map Footer (Step 2 — sample counter + Generate Heatmap) ─── */
+.map-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  flex-shrink: 0;
 }
 
 /* ── Custom Boundary Tool Buttons ───────────────────────────── */
@@ -555,6 +620,108 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+/* ── Draft Sample Card (Step 2 — photo preview, coords, analysis) */
+.upload-photo {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--upload-card-border);
+}
+
+.upload-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.upload-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--upload-text-muted);
+}
+
+.upload-input {
+  min-height: 48px;
+  padding: 10px var(--space-md);
+  border: 1px solid var(--upload-card-border);
+  border-radius: var(--radius-md);
+  background: #ffffff;
+  color: var(--upload-text);
+  font-family: 'SF Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.upload-input:focus {
+  outline: none;
+  border-color: var(--upload-emerald);
+}
+
+.upload-warning {
+  margin: -4px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--upload-danger);
+}
+
+.upload-analysis {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--upload-canvas);
+  border: 1px solid var(--upload-card-border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.upload-analysis-row strong {
+  color: var(--upload-emerald);
+}
+
+.upload-analysis-loading {
+  font-size: 13px;
+  color: var(--upload-text-muted);
+  font-style: italic;
+}
+
+.upload-btn-add {
+  min-height: 48px;
+  padding: 14px var(--space-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--upload-emerald);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.upload-btn-add:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.upload-btn-add:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.upload-divider {
+  margin: 0;
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--upload-card-border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--upload-text-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 /* ── Buttons ────────────────────────────────────────────────── */
 .btn {
   display: flex;
@@ -710,78 +877,8 @@ html, body, #root {
   text-align: right;
 }
 
-/* ── Manual Pin Panel ───────────────────────────────────────── */
-.manual-pin-panel {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: var(--z-modal);
-  padding: var(--space-md);
-  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom, 16px));
-  animation: slideUp 0.3s ease-out;
-}
-
-.manual-pin-card {
-  background: var(--bg-card);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--accent-orange);
-  border-radius: var(--radius-lg);
-  padding: var(--space-lg);
-  box-shadow: 0 0 24px rgba(249, 115, 22, 0.15);
-}
-
-.manual-pin-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
-}
-
-.manual-pin-header h3 {
-  font-size: 1rem;
-  font-weight: 700;
-}
-
-.manual-pin-icon-emoji {
-  font-size: 1.3rem;
-}
-
-.manual-pin-hint {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin-bottom: var(--space-md);
-}
-
-.manual-pin-error {
-  font-size: 0.8rem;
-  color: var(--accent-red);
-  background: rgba(239, 68, 68, 0.1);
-  padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
-  margin-bottom: var(--space-sm);
-}
-
-.manual-pin-coords {
-  font-size: 0.8rem;
-  color: var(--accent-emerald);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  margin-bottom: var(--space-md);
-}
-
-.manual-pin-actions {
-  display: flex;
-  gap: var(--space-sm);
-}
-
-.manual-pin-actions .btn {
-  flex: 1;
-}
-
-/* Custom pin marker */
-.manual-pin-icon {
+/* Custom draft preview pin marker (DraftMarker.jsx) */
+.draft-marker-icon {
   background: none !important;
   border: none !important;
 }
@@ -1056,14 +1153,6 @@ html, body, #root {
   /* Sampling split: left (upload) / right (map) */
   .workspace--split {
     flex-direction: row;
-  }
-
-  .manual-pin-panel {
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    max-width: 480px;
-    width: 100%;
   }
 
   .color-legend {

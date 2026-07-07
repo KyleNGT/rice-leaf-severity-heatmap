@@ -14,7 +14,7 @@ import MobileBoundaryDrawer from './MobileBoundaryDrawer';
 import MapController from './MapController';
 import SampleMarker from './SampleMarker';
 import HeatmapOverlay from './HeatmapOverlay';
-import ManualPinModal from './ManualPinModal';
+import DraftMarker from './DraftMarker';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 
 /**
@@ -36,9 +36,8 @@ export default function MapView({
   samples,
   heatmapData,
   heatmapOpacity,
-  manualPinMode,
-  onManualPinConfirm,
-  onManualPinCancel,
+  draftSample,
+  mapFullscreen,
   drawingAction,
   onDrawingActionChange,
   onDrawingStateChange,
@@ -100,7 +99,7 @@ export default function MapView({
         currentStep={currentStep}
         boundary={boundary}
         isMobile={isMobile}
-        manualPinMode={manualPinMode}
+        mapFullscreen={mapFullscreen}
       />
 
       {/* Boundary drawing tool — active only during boundary step */}
@@ -139,14 +138,8 @@ export default function MapView({
         />
       )}
 
-      {/* Manual pin placement mode */}
-      {manualPinMode && (
-        <ManualPinModal
-          boundary={boundary}
-          onConfirm={onManualPinConfirm}
-          onCancel={onManualPinCancel}
-        />
-      )}
+      {/* Live preview pin for the in-progress draft sample */}
+      <DraftMarker draft={draftSample} />
     </MapContainer>
   );
 }
