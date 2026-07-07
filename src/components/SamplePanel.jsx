@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 
 /**
  * ============================================================
@@ -9,11 +9,12 @@ import { useRef } from 'react';
  *
  * Two states:
  *   - No draft: title + hint + Camera/Gallery buttons.
- *   - Draft active: photo preview, editable Lat/Long fields
- *     (pre-filled from EXIF GPS when available), the mock ML
- *     analysis (status + severity), an "Add Sample" button to
- *     commit the draft, then Camera/Gallery again to start the
- *     next one.
+ *   - Draft active: a compact photo thumbnail (tap to view full
+ *     size), a side-by-side Lat/Long row (pre-filled from EXIF GPS
+ *     when available) with helper/warning text directly beneath,
+ *     the mock ML analysis as inline Status/Severity/Confidence
+ *     pills, an "Add Sample" button to commit the draft, then
+ *     Camera/Gallery again to start the next one.
  */
 export default function SamplePanel({
   draft,
@@ -27,8 +28,11 @@ export default function SamplePanel({
 }) {
   const cameraRef = useRef(null);
   const uploadRef = useRef(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   const sourcesDisabled = disabled || isMaxed;
+  const confidencePct =
+    draft?.confidence != null ? Math.round(parseFloat(draft.confidence) * 100) : null;
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
@@ -93,54 +97,72 @@ export default function SamplePanel({
 
         {draft && (
           <>
-            <img className="upload-photo" src={draft.thumbnail} alt="Uploaded rice leaf sample" />
+            <button
+              type="button"
+              className="upload-photo-btn"
+              onClick={() => setLightboxOpen(true)}
+              aria-label="View full-size photo"
+            >
+              <img className="upload-photo" src={draft.thumbnail} alt="Uploaded rice leaf sample" />
+              <span className="upload-photo-expand" aria-hidden="true">
+                ⤢
+              </span>
+            </button>
 
-            <div className="upload-field-row">
-              <label className="upload-label" htmlFor="draft-lat">
-                Latitude
-              </label>
-              <input
-                id="draft-lat"
-                className="upload-input"
-                type="text"
-                inputMode="decimal"
-                placeholder="e.g. 15.470000"
-                value={draft.lat}
-                onChange={(e) => onCoordChange('lat', e.target.value)}
-              />
-            </div>
+            <div className="upload-coords">
+              <div className="upload-field">
+                <label className="upload-label" htmlFor="draft-lat">
+                  Latitude
+                </label>
+                <input
+                  id="draft-lat"
+                  className="upload-input"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 15.470000"
+                  value={draft.lat}
+                  onChange={(e) => onCoordChange('lat', e.target.value)}
+                />
+              </div>
 
-            <div className="upload-field-row">
-              <label className="upload-label" htmlFor="draft-lng">
-                Longitude
-              </label>
-              <input
-                id="draft-lng"
-                className="upload-input"
-                type="text"
-                inputMode="decimal"
-                placeholder="e.g. 120.590000"
-                value={draft.lng}
-                onChange={(e) => onCoordChange('lng', e.target.value)}
-              />
+              <div className="upload-field">
+                <label className="upload-label" htmlFor="draft-lng">
+                  Longitude
+                </label>
+                <input
+                  id="draft-lng"
+                  className="upload-input"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 120.590000"
+                  value={draft.lng}
+                  onChange={(e) => onCoordChange('lng', e.target.value)}
+                />
+              </div>
             </div>
 
             {coordWarning && <p className="upload-warning">⚠ {coordWarning}</p>}
 
-            <div className="upload-analysis">
-              {draft.analyzing ? (
-                <span className="upload-analysis-loading">Analyzing leaf image…</span>
-              ) : (
-                <>
-                  <span className="upload-analysis-row">
-                    Status: <strong>{draft.diseaseName}</strong>
-                  </span>
-                  <span className="upload-analysis-row">
-                    Severity: <strong>{draft.severity}%</strong>
-                  </span>
-                </>
-              )}
-            </div>
+            {draft.analyzing ? (
+              <p className="upload-analysis-loading">Analyzing leaf image…</p>
+            ) : (
+              <div className="upload-metrics">
+                <div className="upload-metric">
+                  <span className="upload-metric-label">Status</span>
+                  <span className="upload-metric-value">{draft.diseaseName}</span>
+                </div>
+                <div className="upload-metric">
+                  <span className="upload-metric-label">Severity</span>
+                  <span className="upload-metric-value">{draft.severity}%</span>
+                </div>
+                {confidencePct != null && (
+                  <div className="upload-metric">
+                    <span className="upload-metric-label">Confidence</span>
+                    <span className="upload-metric-value">{confidencePct}%</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <button
               type="button"
@@ -156,6 +178,20 @@ export default function SamplePanel({
           </>
         )}
       </div>
+
+      {draft && lightboxOpen && (
+        <div className="upload-lightbox" onClick={() => setLightboxOpen(false)}>
+          <img src={draft.thumbnail} alt="Uploaded rice leaf sample, full size" />
+          <button
+            type="button"
+            className="upload-lightbox-close"
+            onClick={() => setLightboxOpen(false)}
+            aria-label="Close full-size photo"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }

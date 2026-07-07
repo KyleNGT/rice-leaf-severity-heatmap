@@ -516,8 +516,8 @@ html, body, #root {
   max-width: 420px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-md);
-  padding: var(--space-lg);
+  gap: var(--space-sm);
+  padding: var(--space-md);
   background: #ffffff;
   border: 1px solid var(--upload-card-border);
   border-radius: var(--radius-md);
@@ -620,36 +620,71 @@ html, body, #root {
   cursor: not-allowed;
 }
 
-/* ── Draft Sample Card (Step 2 — photo preview, coords, analysis) */
-.upload-photo {
-  width: 100%;
-  max-height: 200px;
-  object-fit: cover;
-  border-radius: var(--radius-md);
+/* ── Draft Sample Card (Step 2 — photo preview, coords, metrics) ─ */
+.upload-photo-btn {
+  position: relative;
+  padding: 0;
   border: 1px solid var(--upload-card-border);
+  border-radius: var(--radius-md);
+  background: none;
+  cursor: zoom-in;
+  line-height: 0;
 }
 
-.upload-field-row {
+.upload-photo {
+  display: block;
+  width: 100%;
+  max-height: 110px;
+  object-fit: cover;
+  border-radius: calc(var(--radius-md) - 1px);
+}
+
+.upload-photo-expand {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.55);
+  color: #ffffff;
+  font-size: 13px;
+  line-height: 1;
+}
+
+/* Coordinates — side-by-side on a single row */
+.upload-coords {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-sm);
+}
+
+.upload-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
+  min-width: 0;
 }
 
 .upload-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--upload-text-muted);
 }
 
 .upload-input {
   min-height: 48px;
-  padding: 10px var(--space-md);
+  min-width: 0;
+  padding: 10px var(--space-sm);
   border: 1px solid var(--upload-card-border);
   border-radius: var(--radius-md);
   background: #ffffff;
   color: var(--upload-text);
   font-family: 'SF Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
-  font-size: 14px;
+  font-size: 13px;
   transition: border-color 0.2s ease;
 }
 
@@ -658,29 +693,52 @@ html, body, #root {
   border-color: var(--upload-emerald);
 }
 
+/* Compact helper/error text directly under the coordinate row */
 .upload-warning {
-  margin: -4px 0 0;
-  font-size: 13px;
-  font-weight: 600;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--upload-danger);
 }
 
-.upload-analysis {
+/* Status / Severity / Confidence — inline pills, one row */
+.upload-metrics {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--upload-canvas);
-  border: 1px solid var(--upload-card-border);
-  border-radius: var(--radius-md);
-  font-size: 14px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
-.upload-analysis-row strong {
+.upload-metric {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  background: var(--upload-canvas);
+  border: 1px solid var(--upload-card-border);
+  border-radius: var(--radius-sm);
+}
+
+.upload-metric-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--upload-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.upload-metric-value {
+  font-size: 13px;
+  font-weight: 700;
   color: var(--upload-emerald);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .upload-analysis-loading {
+  margin: 0;
   font-size: 13px;
   color: var(--upload-text-muted);
   font-style: italic;
@@ -688,7 +746,7 @@ html, body, #root {
 
 .upload-btn-add {
   min-height: 48px;
-  padding: 14px var(--space-lg);
+  padding: 12px var(--space-lg);
   border: none;
   border-radius: var(--radius-md);
   font-family: inherit;
@@ -712,7 +770,7 @@ html, body, #root {
 
 .upload-divider {
   margin: 0;
-  padding-top: var(--space-sm);
+  padding-top: var(--space-xs);
   border-top: 1px solid var(--upload-card-border);
   font-size: 12px;
   font-weight: 600;
@@ -720,6 +778,44 @@ html, body, #root {
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* ── Photo Lightbox ───────────────────────────────────────────── */
+.upload-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-loading);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  background: rgba(15, 23, 42, 0.85);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.upload-lightbox img {
+  max-width: 100%;
+  max-height: 90vh;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.upload-lightbox-close {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-size: 18px;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 /* ── Buttons ────────────────────────────────────────────────── */
