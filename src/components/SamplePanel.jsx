@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { MAX_SAMPLES } from '../constants/constants';
 
 /**
@@ -7,10 +7,9 @@ import { MAX_SAMPLES } from '../constants/constants';
  * ============================================================
  * Occupies one half of the Sampling-step workspace split (left
  * on desktop, top on mobile — see .workspace--split in App.css).
- * Centers an "Add Image" box; tapping it reveals a Camera /
- * Gallery source chooser. Both sources funnel through the same
- * onImageSelected(file, source) callback the app already uses
- * for EXIF-GPS extraction / manual-pin fallback.
+ * Camera and Gallery are one tap each — both funnel through the
+ * same onImageSelected(file, source) callback the app already
+ * uses for EXIF-GPS extraction / manual-pin fallback.
  */
 export default function SamplePanel({
   sampleCount,
@@ -20,7 +19,6 @@ export default function SamplePanel({
 }) {
   const cameraRef = useRef(null);
   const uploadRef = useRef(null);
-  const [showSources, setShowSources] = useState(false);
 
   const isMaxed = sampleCount >= MAX_SAMPLES;
   const isDisabled = disabled || isMaxed;
@@ -32,7 +30,6 @@ export default function SamplePanel({
     }
     // Reset so the same file can be re-selected
     e.target.value = '';
-    setShowSources(false);
   };
 
   return (
@@ -57,37 +54,28 @@ export default function SamplePanel({
           onChange={(e) => handleFileChange(e, 'upload')}
         />
 
-        <button
-          type="button"
-          className={`upload-box ${showSources ? 'upload-box-active' : ''}`}
-          onClick={() => setShowSources((prev) => !prev)}
-          disabled={isDisabled}
-          aria-expanded={showSources}
-        >
-          <span className="upload-box-icon" aria-hidden="true">📍</span>
-          <span className="upload-box-label">Add Image</span>
-        </button>
+        <p className="upload-hint">Choose how to add a photo:</p>
 
-        {showSources && !isDisabled && (
-          <div className="upload-sources">
-            <button
-              type="button"
-              className="upload-source-btn"
-              onClick={() => cameraRef.current?.click()}
-            >
-              <span aria-hidden="true">📷</span>
-              <span>Camera</span>
-            </button>
-            <button
-              type="button"
-              className="upload-source-btn"
-              onClick={() => uploadRef.current?.click()}
-            >
-              <span aria-hidden="true">🖼️</span>
-              <span>Gallery</span>
-            </button>
-          </div>
-        )}
+        <div className="upload-sources">
+          <button
+            type="button"
+            className="upload-source-btn"
+            onClick={() => cameraRef.current?.click()}
+            disabled={isDisabled}
+          >
+            <span aria-hidden="true">📷</span>
+            <span>Camera</span>
+          </button>
+          <button
+            type="button"
+            className="upload-source-btn"
+            onClick={() => uploadRef.current?.click()}
+            disabled={isDisabled}
+          >
+            <span aria-hidden="true">🖼️</span>
+            <span>Gallery</span>
+          </button>
+        </div>
 
         <div className="upload-counter">
           <span>

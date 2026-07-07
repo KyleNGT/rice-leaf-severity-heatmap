@@ -190,6 +190,9 @@ export default function App() {
     window.location.reload();
   }, []);
 
+  // ── Derived Flags ───────────────────────────────────────────
+  const isSamplingSplit = currentStep === STEPS.SAMPLING && !manualPinMode;
+
   // ── Render ─────────────────────────────────────────────────
   return (
     <div className="app">
@@ -204,13 +207,9 @@ export default function App() {
 
       {/* Workspace — full-screen map normally; splits with the upload
           panel during Sampling (row on desktop, column on mobile) */}
-      <div
-        className={`workspace ${
-          currentStep === STEPS.SAMPLING && !manualPinMode ? 'workspace--split' : ''
-        }`}
-      >
+      <div className={`workspace ${isSamplingSplit ? 'workspace--split' : ''}`}>
         {/* Upload panel — visible during sampling step, occupies its half */}
-        {currentStep === STEPS.SAMPLING && !manualPinMode && (
+        {isSamplingSplit && (
           <SamplePanel
             sampleCount={samples.length}
             onImageSelected={handleImageSelected}
@@ -219,28 +218,40 @@ export default function App() {
           />
         )}
 
-        <MapView
-          currentStep={currentStep}
-          boundary={boundary}
-          onBoundaryCreated={handleBoundaryCreated}
-          samples={samples}
-          heatmapData={heatmapData}
-          heatmapOpacity={heatmapOpacity}
-          manualPinMode={manualPinMode}
-          onManualPinConfirm={handleManualPinConfirm}
-          onManualPinCancel={handleManualPinCancel}
-          drawingAction={drawingAction}
-          onDrawingActionChange={setDrawingAction}
-          onDrawingStateChange={setDrawingState}
-          mobileDrawerRef={mobileDrawerRef}
-        />
+        {/* Map panel — always the same wrapper nesting so <MapView>'s
+            persistent <MapContainer> is never remounted; the "boxed
+            card" look (title + inset map) is applied purely via CSS
+            scoped under .workspace--split, so Steps 1 & 3 stay
+            full-screen and pixel-identical to before. */}
+        <div className="map-panel">
+          <div className="map-card">
+            {isSamplingSplit && <h3 className="map-title">Your Field</h3>}
+            <div className="map-box">
+              <MapView
+                currentStep={currentStep}
+                boundary={boundary}
+                onBoundaryCreated={handleBoundaryCreated}
+                samples={samples}
+                heatmapData={heatmapData}
+                heatmapOpacity={heatmapOpacity}
+                manualPinMode={manualPinMode}
+                onManualPinConfirm={handleManualPinConfirm}
+                onManualPinCancel={handleManualPinCancel}
+                drawingAction={drawingAction}
+                onDrawingActionChange={setDrawingAction}
+                onDrawingStateChange={setDrawingState}
+                mobileDrawerRef={mobileDrawerRef}
+              />
 
-        {/* Center-anchored crosshair — mobile boundary drawing only */}
-        {currentStep === STEPS.BOUNDARY && isMobile && !boundary && (
-          <div className="map-crosshair" aria-hidden="true">
-            <span className="map-crosshair-icon">📍</span>
+              {/* Center-anchored crosshair — mobile boundary drawing only */}
+              {currentStep === STEPS.BOUNDARY && isMobile && !boundary && (
+                <div className="map-crosshair" aria-hidden="true">
+                  <span className="map-crosshair-icon">📍</span>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Action panel — always visible */}

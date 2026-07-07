@@ -221,6 +221,71 @@ html, body, #root {
   background: var(--accent-emerald);
 }
 
+/* ── Map Panel (Step 2 — Sampling) ───────────────────────────── */
+/* Always the same wrapper nesting around <MapView> regardless of
+   step, so its persistent <MapContainer> is never remounted. By
+   default these are invisible passthroughs (Steps 1 & 3 render
+   pixel-identical to a bare full-screen map); the "boxed card"
+   look is layered on purely via the .workspace--split scoped
+   rules below, mirroring .upload-panel/.upload-card. */
+.map-panel {
+  flex: 1 1 50%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-card {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-title {
+  display: none;
+}
+
+.map-box {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+}
+
+.workspace--split .map-panel {
+  padding: var(--space-md);
+  padding-top: max(64px, calc(52px + var(--space-md)));
+  background: #f9fafb;
+}
+
+.workspace--split .map-card {
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.workspace--split .map-title {
+  display: block;
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  color: #212222;
+  flex-shrink: 0;
+}
+
+.workspace--split .map-box {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+}
+
 /* ── Map Container ──────────────────────────────────────────── */
 .map-container {
   flex: 1 1 50%;
@@ -400,43 +465,11 @@ html, body, #root {
   text-align: center;
 }
 
-.upload-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-sm);
-  padding: var(--space-xl) var(--space-md);
-  border: 2px dashed var(--upload-card-border);
-  border-radius: var(--radius-md);
-  background: var(--upload-canvas);
-  color: var(--upload-text);
-  font-family: inherit;
-  cursor: pointer;
-  min-height: 48px;
-  touch-action: manipulation;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-
-.upload-box:hover:not(:disabled),
-.upload-box.upload-box-active {
-  border-color: var(--upload-emerald);
-  background: rgba(4, 99, 7, 0.05);
-}
-
-.upload-box:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.upload-box-icon {
-  font-size: 2.25rem;
-  line-height: 1;
-}
-
-.upload-box-label {
-  font-size: 14px;
-  font-weight: 600;
+.upload-hint {
+  margin-top: -4px;
+  font-size: 13px;
+  color: var(--upload-text-muted);
+  text-align: center;
 }
 
 .upload-sources {

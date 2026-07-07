@@ -96,7 +96,12 @@ export default function MapView({
       />
 
       {/* Keeps the persistent map correctly sized/framed across steps */}
-      <MapController currentStep={currentStep} boundary={boundary} isMobile={isMobile} />
+      <MapController
+        currentStep={currentStep}
+        boundary={boundary}
+        isMobile={isMobile}
+        manualPinMode={manualPinMode}
+      />
 
       {/* Boundary drawing tool — active only during boundary step */}
       <BoundaryDrawer
