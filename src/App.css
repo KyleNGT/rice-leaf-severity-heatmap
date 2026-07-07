@@ -56,6 +56,10 @@
   --z-header: 600;
   --z-modal: 700;
   --z-loading: 900;
+
+  /* Mobile bottom sheet peek height (collapsed) — shared with the
+     floating .mobile-sample-actions bar so they stay in sync. */
+  --sheet-peek: 64px;
 }
 
 *,
@@ -88,20 +92,18 @@ html, body, #root {
 
 /* ── Workspace ──────────────────────────────────────────────── */
 /* Fills the app below the header. Normally holds only the map
-   (full-screen). During Sampling it also holds the upload panel
-   and splits 50/50 — column (top/bottom) on mobile, row
-   (left/right) on desktop (see the 768px breakpoint below). The
-   underlying <MapContainer> is never remounted between steps —
-   only this wrapper's flex-direction changes its half of the box. */
+   (full-screen). During Sampling on desktop it also holds the
+   upload panel and splits 50/50 left/right (see the 768px
+   breakpoint below) — the underlying <MapContainer> is never
+   remounted between steps, only this wrapper's flex-direction
+   changes its half of the box. On mobile, Sampling instead keeps
+   the map full-bleed and floats a SampleSheet over it (see
+   .sheet), so `workspace--split` is desktop-only in practice. */
 .workspace {
   position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
-}
-
-.workspace--split {
-  flex-direction: column;
 }
 
 /* ── Header ─────────────────────────────────────────────────── */
@@ -397,6 +399,120 @@ html, body, #root {
   flex-shrink: 0;
 }
 
+/* ── Mobile Bottom Sheet (Step 2 — Sampling, mobile only) ─────── */
+/* Google-Maps-style draggable tray floating over the full-bleed map
+   (see SampleSheet.jsx). `top` is pinned to the same header-clearance
+   formula used by .map-back-btn above, so the fully expanded sheet's
+   top edge can never render behind the fixed .app-header — this is
+   what fixes the navbar-overlap bug on mobile. Collapsed/expanded
+   resting positions are pure CSS (no JS height measurement needed);
+   SampleSheet only sets an inline transform while actively dragging. */
+.sheet {
+  /* Same light-theme tokens as .upload-panel/.map-card, scoped here
+     too since <SamplePanel bare> renders directly inside this card. */
+  --upload-canvas: #f9fafb;
+  --upload-card-border: #e5e7eb;
+  --upload-text: #212222;
+  --upload-text-muted: #6b7280;
+  --upload-emerald: #046307;
+  --upload-warning: #d7e051;
+  --upload-danger: #ed5d54;
+
+  position: fixed;
+  top: max(64px, calc(52px + var(--space-md)));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -4px 24px rgba(15, 23, 42, 0.18);
+  color: var(--upload-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  transform: translateY(calc(100% - var(--sheet-peek)));
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  touch-action: none;
+}
+
+.sheet--expanded {
+  transform: translateY(0);
+}
+
+.sheet--dragging {
+  transition: none;
+}
+
+.sheet-handle-row {
+  flex-shrink: 0;
+  height: var(--sheet-peek);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.sheet-handle-bar {
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--upload-card-border);
+}
+
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sheet-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: 0 var(--space-md);
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom, 16px));
+  overflow-y: auto;
+  touch-action: pan-y;
+}
+
+/* ── Mobile Floating Sample Actions (counter + Generate Heatmap) ── */
+/* Sits just above the collapsed sheet's peek, always reachable there;
+   the expanded sheet (higher z-index) naturally covers it, matching
+   how Google Maps hides its FAB under an expanded sheet. */
+.mobile-sample-actions {
+  /* Same light-theme tokens as .upload-panel — its children
+     (.upload-counter / .upload-btn-generate) rely on these and would
+     otherwise have no ancestor defining them here. */
+  --upload-canvas: #f9fafb;
+  --upload-card-border: #e5e7eb;
+  --upload-text: #212222;
+  --upload-text-muted: #6b7280;
+  --upload-emerald: #046307;
+
+  position: fixed;
+  left: var(--space-md);
+  right: var(--space-md);
+  bottom: calc(var(--sheet-peek) + var(--space-sm));
+  z-index: var(--z-panel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: var(--upload-text);
+}
+
+.mobile-sample-actions .upload-counter,
+.mobile-sample-actions .upload-btn-generate {
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+}
+
 /* ── Custom Boundary Tool Buttons ───────────────────────────── */
 .boundary-tools {
   display: flex;
@@ -623,6 +739,8 @@ html, body, #root {
 /* ── Draft Sample Card (Step 2 — photo preview, coords, metrics) ─ */
 .upload-photo-btn {
   position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   padding: 0;
   border: 1px solid var(--upload-card-border);
   border-radius: var(--radius-md);
@@ -634,7 +752,7 @@ html, body, #root {
 .upload-photo {
   display: block;
   width: 100%;
-  max-height: 110px;
+  height: 100%;
   object-fit: cover;
   border-radius: calc(var(--radius-md) - 1px);
 }

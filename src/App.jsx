@@ -3,6 +3,7 @@ import * as turf from '@turf/turf';
 import MapView from './components/MapView';
 import StepperBar from './components/StepperBar';
 import SamplePanel from './components/SamplePanel';
+import SampleSheet from './components/SampleSheet';
 import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
@@ -209,7 +210,14 @@ export default function App() {
   }, []);
 
   // ── Derived Flags ───────────────────────────────────────────
-  const isSamplingSplit = currentStep === STEPS.SAMPLING && !mapFullscreen;
+  // Desktop keeps the side-by-side boxed-card split (with its own
+  // enlarge/fullscreen toggle). Mobile instead keeps the map plain
+  // full-bleed (like Steps 1 & 3) and floats a draggable bottom sheet
+  // over it — see SampleSheet.jsx — so `mapFullscreen`/enlarge never
+  // apply on mobile in practice.
+  const isDesktopSamplingSplit =
+    currentStep === STEPS.SAMPLING && !isMobile && !mapFullscreen;
+  const isMobileSampling = currentStep === STEPS.SAMPLING && isMobile;
   const canAddSample =
     !!draftSample &&
     !draftSample.analyzing &&
@@ -233,10 +241,12 @@ export default function App() {
       </header>
 
       {/* Workspace — full-screen map normally; splits with the upload
-          panel during Sampling (row on desktop, column on mobile) */}
-      <div className={`workspace ${isSamplingSplit ? 'workspace--split' : ''}`}>
-        {/* Upload panel — visible during sampling step, occupies its half */}
-        {isSamplingSplit && (
+          panel during Sampling on desktop only. On mobile the map stays
+          full-bleed (like Steps 1 & 3) and a SampleSheet floats over it
+          instead (see below). */}
+      <div className={`workspace ${isDesktopSamplingSplit ? 'workspace--split' : ''}`}>
+        {/* Upload panel — desktop only, occupies its half of the split */}
+        {isDesktopSamplingSplit && (
           <SamplePanel
             draft={draftSample}
             onImageSelected={handleImageSelected}
@@ -256,7 +266,7 @@ export default function App() {
             full-screen and pixel-identical to before. */}
         <div className="map-panel">
           <div className="map-card">
-            {isSamplingSplit && <h3 className="map-title">Your Field</h3>}
+            {isDesktopSamplingSplit && <h3 className="map-title">Your Field</h3>}
             <div className="map-box">
               <MapView
                 currentStep={currentStep}
@@ -280,8 +290,8 @@ export default function App() {
                 </div>
               )}
 
-              {/* Enlarge — take the map fullscreen during sampling */}
-              {isSamplingSplit && (
+              {/* Enlarge — take the map fullscreen during sampling (desktop only) */}
+              {isDesktopSamplingSplit && (
                 <button
                   type="button"
                   className="map-enlarge-btn"
@@ -292,8 +302,8 @@ export default function App() {
                 </button>
               )}
 
-              {/* Back — return from the fullscreen map takeover */}
-              {mapFullscreen && currentStep === STEPS.SAMPLING && (
+              {/* Back — return from the fullscreen map takeover (desktop only) */}
+              {!isMobile && mapFullscreen && currentStep === STEPS.SAMPLING && (
                 <button
                   type="button"
                   className="map-back-btn"
@@ -306,8 +316,9 @@ export default function App() {
             </div>
 
             {/* Sample counter + Generate Heatmap — under the map, in
-                the "Your Field" card (moved from the upload panel) */}
-            {isSamplingSplit && (
+                the "Your Field" card (desktop only; mobile's equivalent
+                floats over the map — see .mobile-sample-actions below) */}
+            {isDesktopSamplingSplit && (
               <div className="map-footer">
                 <div className="upload-counter">
                   <span>
@@ -334,6 +345,46 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Mobile bottom sheet — floats over the full-bleed map during
+          Sampling on mobile, replacing the desktop split entirely. */}
+      {isMobileSampling && (
+        <>
+          <div className="mobile-sample-actions">
+            <div className="upload-counter">
+              <span>
+                Samples: <span className="upload-counter-value">{samples.length}</span> /{' '}
+                {MAX_SAMPLES}
+              </span>
+              {samples.length >= MAX_SAMPLES && (
+                <span className="upload-counter-maxed">Maximum reached</span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              className="upload-btn-generate"
+              disabled={samples.length < 2}
+              onClick={handleGenerateHeatmap}
+            >
+              {samples.length < 2
+                ? `Need at least 2 samples (${samples.length}/2)`
+                : `🗺️ Generate Heatmap (${samples.length} samples)`}
+            </button>
+          </div>
+
+          <SampleSheet
+            draft={draftSample}
+            onImageSelected={handleImageSelected}
+            onCoordChange={handleDraftCoordChange}
+            onAddSample={handleAddSample}
+            canAddSample={canAddSample}
+            coordWarning={coordWarning}
+            disabled={isProcessing}
+            isMaxed={samples.length >= MAX_SAMPLES}
+          />
+        </>
+      )}
 
       {/* Action panel — always visible */}
       <ActionPanel
