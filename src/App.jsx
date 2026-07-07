@@ -202,39 +202,46 @@ export default function App() {
         <StepperBar currentStep={currentStep} />
       </header>
 
-      {/* Map fills the viewport */}
-      <MapView
-        currentStep={currentStep}
-        boundary={boundary}
-        onBoundaryCreated={handleBoundaryCreated}
-        samples={samples}
-        heatmapData={heatmapData}
-        heatmapOpacity={heatmapOpacity}
-        manualPinMode={manualPinMode}
-        onManualPinConfirm={handleManualPinConfirm}
-        onManualPinCancel={handleManualPinCancel}
-        drawingAction={drawingAction}
-        onDrawingActionChange={setDrawingAction}
-        onDrawingStateChange={setDrawingState}
-        mobileDrawerRef={mobileDrawerRef}
-      />
+      {/* Workspace — full-screen map normally; splits with the upload
+          panel during Sampling (row on desktop, column on mobile) */}
+      <div
+        className={`workspace ${
+          currentStep === STEPS.SAMPLING && !manualPinMode ? 'workspace--split' : ''
+        }`}
+      >
+        {/* Upload panel — visible during sampling step, occupies its half */}
+        {currentStep === STEPS.SAMPLING && !manualPinMode && (
+          <SamplePanel
+            sampleCount={samples.length}
+            onImageSelected={handleImageSelected}
+            onGenerateHeatmap={handleGenerateHeatmap}
+            disabled={isProcessing}
+          />
+        )}
 
-      {/* Center-anchored crosshair — mobile boundary drawing only */}
-      {currentStep === STEPS.BOUNDARY && isMobile && !boundary && (
-        <div className="map-crosshair" aria-hidden="true">
-          <span className="map-crosshair-icon">📍</span>
-        </div>
-      )}
-
-      {/* Sampling panel — visible during sampling step */}
-      {currentStep === STEPS.SAMPLING && !manualPinMode && (
-        <SamplePanel
-          sampleCount={samples.length}
-          onImageSelected={handleImageSelected}
-          onGenerateHeatmap={handleGenerateHeatmap}
-          disabled={isProcessing}
+        <MapView
+          currentStep={currentStep}
+          boundary={boundary}
+          onBoundaryCreated={handleBoundaryCreated}
+          samples={samples}
+          heatmapData={heatmapData}
+          heatmapOpacity={heatmapOpacity}
+          manualPinMode={manualPinMode}
+          onManualPinConfirm={handleManualPinConfirm}
+          onManualPinCancel={handleManualPinCancel}
+          drawingAction={drawingAction}
+          onDrawingActionChange={setDrawingAction}
+          onDrawingStateChange={setDrawingState}
+          mobileDrawerRef={mobileDrawerRef}
         />
-      )}
+
+        {/* Center-anchored crosshair — mobile boundary drawing only */}
+        {currentStep === STEPS.BOUNDARY && isMobile && !boundary && (
+          <div className="map-crosshair" aria-hidden="true">
+            <span className="map-crosshair-icon">📍</span>
+          </div>
+        )}
+      </div>
 
       {/* Action panel — always visible */}
       <ActionPanel

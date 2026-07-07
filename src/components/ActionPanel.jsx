@@ -203,16 +203,11 @@ export default function ActionPanel({
     );
   }
 
-  // ── Step 2: Sampling (notification alert) ──────────────────
+  // ── Step 2: Sampling ─────────────────────────────────────────
+  // No floating panel — the split-layout upload card (SamplePanel)
+  // carries all guidance and controls for this step.
   if (currentStep === STEPS.SAMPLING) {
-    return (
-      <div className="sampling-alert">
-        <span className="sampling-alert-icon">🌾</span>
-        <span className="sampling-alert-text">
-          Take or upload photos of rice leaves to collect samples.
-        </span>
-      </div>
-    );
+    return null;
   }
 
   // ── Step 3: Heatmap ────────────────────────────────────────

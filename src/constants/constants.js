@@ -46,6 +46,19 @@ export const ESRI_TILE_URL =
 export const ESRI_ATTRIBUTION =
   'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics';
 
+/** How far a user can pinch/scroll-zoom in the UI. */
+export const ESRI_MAX_ZOOM = 22;
+
+/**
+ * Esri World Imagery's actual max resolution most places (it varies
+ * by region — rural areas are sometimes lower, dense cities sometimes
+ * higher). Tiles requested past this zoom don't exist and Esri
+ * returns a "Map data not yet available" placeholder instead of
+ * imagery, so Leaflet is told to stop fetching past this level and
+ * upscale the last real tile instead (blurry, but never blank).
+ */
+export const ESRI_MAX_NATIVE_ZOOM = 19;
+
 // ── Severity Color Scale ─────────────────────────────────────
 /**
  * Maps normalized severity [0, 1] to hex colors.

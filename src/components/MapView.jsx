@@ -6,9 +6,12 @@ import {
   DEFAULT_ZOOM,
   ESRI_TILE_URL,
   ESRI_ATTRIBUTION,
+  ESRI_MAX_ZOOM,
+  ESRI_MAX_NATIVE_ZOOM,
 } from '../constants/constants';
 import BoundaryDrawer from './BoundaryDrawer';
 import MobileBoundaryDrawer from './MobileBoundaryDrawer';
+import MapController from './MapController';
 import SampleMarker from './SampleMarker';
 import HeatmapOverlay from './HeatmapOverlay';
 import ManualPinModal from './ManualPinModal';
@@ -85,7 +88,15 @@ export default function MapView({
       touchZoom={true}
       dragging={true}
     >
-      <TileLayer url={ESRI_TILE_URL} attribution={ESRI_ATTRIBUTION} maxZoom={22} />
+      <TileLayer
+        url={ESRI_TILE_URL}
+        attribution={ESRI_ATTRIBUTION}
+        maxZoom={ESRI_MAX_ZOOM}
+        maxNativeZoom={ESRI_MAX_NATIVE_ZOOM}
+      />
+
+      {/* Keeps the persistent map correctly sized/framed across steps */}
+      <MapController currentStep={currentStep} boundary={boundary} isMobile={isMobile} />
 
       {/* Boundary drawing tool — active only during boundary step */}
       <BoundaryDrawer
