@@ -59,6 +59,10 @@ export const ESRI_MAX_ZOOM = 22;
  */
 export const ESRI_MAX_NATIVE_ZOOM = 19;
 
+// ── Geolocation ──────────────────────────────────────────────
+/** Max time to wait for a live GPS fix during camera capture. */
+export const GEO_TIMEOUT_MS = 10000;
+
 // ── Severity Color Scale ─────────────────────────────────────
 /**
  * Maps normalized severity [0, 1] to hex colors.

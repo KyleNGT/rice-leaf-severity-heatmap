@@ -21,6 +21,7 @@ export default function ActionPanel({
   boundary,
   onAdvanceStep,
   onReset,
+  onResumeSampling,
   heatmapOpacity,
   onOpacityChange,
   heatmapData,
@@ -237,6 +238,13 @@ export default function ActionPanel({
               <span className="opacity-value">{Math.round(heatmapOpacity * 100)}%</span>
             </div>
           )}
+
+          <button
+            className="btn btn-primary btn-full"
+            onClick={onResumeSampling}
+          >
+            ＋ Add More Samples
+          </button>
 
           <button
             className="btn btn-secondary btn-full"

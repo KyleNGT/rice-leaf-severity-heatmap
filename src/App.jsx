@@ -8,6 +8,7 @@ import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
 import { useExifGps } from './hooks/useExifGps';
+import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
 import { analyzePlantImage } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
@@ -38,8 +39,12 @@ export default function App() {
 
   // ── Draft Sample State ──────────────────────────────────────
   // { file, thumbnail, lat, lng, analyzing, severity, diseaseDetected,
-  //   diseaseName, confidence } — an in-progress sample being edited
-  // in the SamplePanel card before the user commits it with "Add Sample".
+  //   diseaseName, confidence, locating, locationSource, locationError,
+  //   capturedAt } — an in-progress sample being edited in the
+  // SamplePanel card before the user commits it with "Add Sample".
+  // locationSource is 'gps' | 'exif' | 'manual' | null, recording how
+  // the coordinates were obtained (live camera GPS, photo EXIF, or
+  // hand-typed) — see handleImageSelected below.
   const [draftSample, setDraftSample] = useState(null);
 
   // ── Map Fullscreen State ────────────────────────────────────
@@ -55,6 +60,7 @@ export default function App() {
 
   // ── Hooks ──────────────────────────────────────────────────
   const { extractGps } = useExifGps();
+  const { getLocation } = useDeviceLocation();
   const isMobile = useIsMobileViewport();
   const mobileDrawerRef = useRef(null);
 
@@ -78,15 +84,27 @@ export default function App() {
   }, [boundary]);
 
   // ── Image Processing Pipeline ──────────────────────────────
-  // Selecting a photo (camera or gallery) replaces any uncommitted
-  // draft with a new one: thumbnail + EXIF-prefilled (or blank)
-  // coordinates immediately, then the mock ML analysis merges in
-  // once it resolves. The draft is only added to `samples` when the
-  // user taps "Add Sample" in SamplePanel.
+  // Selecting a photo replaces any uncommitted draft with a new one,
+  // then the mock ML analysis merges in once it resolves. The draft
+  // is only added to `samples` when the user taps "Add Sample".
+  //
+  // Location handling branches by `source`:
+  //   - 'camera' (live capture): NEVER read EXIF — iOS WebKit strips
+  //     GPS from camera-captured photos anyway, so instead we fetch a
+  //     live fix via navigator.geolocation (useDeviceLocation), shown
+  //     with a "Getting your location…" spinner while it resolves.
+  //   - 'gallery' (deferred upload): NEVER call navigator.geolocation
+  //     — the device's current position has no relation to where a
+  //     previously-taken photo was shot (e.g. uploading from the
+  //     office later). Best-effort EXIF GPS instead; if absent, the
+  //     user enters coordinates manually.
+  // Both paths fall back to the manual lat/lng fields on failure.
   const handleImageSelected = useCallback(
-    async (file) => {
+    async (file, source) => {
       const thumbnail = URL.createObjectURL(file);
-      const gps = await extractGps(file);
+      const isCamera = source === 'camera';
+
+      const gps = isCamera ? { hasGps: false } : await extractGps(file);
 
       setDraftSample({
         file,
@@ -98,36 +116,70 @@ export default function App() {
         diseaseDetected: null,
         diseaseName: null,
         confidence: null,
+        locating: isCamera,
+        locationSource: gps.hasGps ? 'exif' : null,
+        locationError: '',
+        capturedAt: null,
       });
 
-      try {
-        const result = await analyzePlantImage(file);
-        setDraftSample((prev) =>
-          // Bail if the draft was replaced/cleared while analyzing
-          prev && prev.file === file
-            ? {
-                ...prev,
-                analyzing: false,
-                severity: result.severity,
-                diseaseDetected: result.diseaseDetected,
-                diseaseName: result.diseaseName,
-                confidence: result.confidence,
-              }
-            : prev
-        );
-      } catch (err) {
-        console.error('Sample analysis failed:', err);
-        setDraftSample((prev) =>
-          prev && prev.file === file ? { ...prev, analyzing: false } : prev
-        );
+      analyzePlantImage(file)
+        .then((result) => {
+          setDraftSample((prev) =>
+            // Bail if the draft was replaced/cleared while analyzing
+            prev && prev.file === file
+              ? {
+                  ...prev,
+                  analyzing: false,
+                  severity: result.severity,
+                  diseaseDetected: result.diseaseDetected,
+                  diseaseName: result.diseaseName,
+                  confidence: result.confidence,
+                }
+              : prev
+          );
+        })
+        .catch((err) => {
+          console.error('Sample analysis failed:', err);
+          setDraftSample((prev) =>
+            prev && prev.file === file ? { ...prev, analyzing: false } : prev
+          );
+        });
+
+      if (isCamera) {
+        try {
+          const pos = await getLocation();
+          setDraftSample((prev) =>
+            prev && prev.file === file
+              ? {
+                  ...prev,
+                  lat: pos.lat.toFixed(6),
+                  lng: pos.lng.toFixed(6),
+                  capturedAt: pos.timestamp,
+                  locationSource: 'gps',
+                  locating: false,
+                  locationError: '',
+                }
+              : prev
+          );
+        } catch (err) {
+          setDraftSample((prev) =>
+            prev && prev.file === file
+              ? { ...prev, locating: false, locationError: err.message }
+              : prev
+          );
+        }
       }
     },
-    [extractGps]
+    [extractGps, getLocation]
   );
 
   // ── Draft Coordinate Editing ────────────────────────────────
+  // A manual edit always wins as the provenance of record — even if
+  // GPS or EXIF had prefilled the field, the user is now the source.
   const handleDraftCoordChange = useCallback((field, value) => {
-    setDraftSample((prev) => (prev ? { ...prev, [field]: value } : prev));
+    setDraftSample((prev) =>
+      prev ? { ...prev, [field]: value, locationSource: 'manual', locationError: '' } : prev
+    );
   }, []);
 
   // ── Draft Validity (parsed coords + inside-boundary check) ──
@@ -166,6 +218,8 @@ export default function App() {
       diseaseName: draftSample.diseaseName,
       confidence: draftSample.confidence,
       thumbnail: draftSample.thumbnail,
+      locationSource: draftSample.locationSource,
+      capturedAt: draftSample.capturedAt ?? null,
     };
 
     setSamples((prev) => [...prev, newSample]);
@@ -196,6 +250,15 @@ export default function App() {
     }
   }, [samples, boundary]);
 
+  // ── Resume Sampling ────────────────────────────────────────
+  // Return to Step 2 keeping boundary + existing samples. Clear the
+  // heatmap so the map is clean for new sampling; the user regenerates
+  // it (over the fuller sample set) with the existing Generate button.
+  const handleResumeSampling = useCallback(() => {
+    setHeatmapData(null);
+    setCurrentStep(STEPS.SAMPLING);
+  }, []);
+
   // ── Reset ──────────────────────────────────────────────────
   const handleReset = useCallback(() => {
     setCurrentStep(STEPS.BOUNDARY);
@@ -221,6 +284,7 @@ export default function App() {
   const canAddSample =
     !!draftSample &&
     !draftSample.analyzing &&
+    !draftSample.locating &&
     draftValidity.isValid &&
     samples.length < MAX_SAMPLES;
   const coordWarning =
@@ -392,6 +456,7 @@ export default function App() {
         boundary={boundary}
         onAdvanceStep={advanceToSampling}
         onReset={handleReset}
+        onResumeSampling={handleResumeSampling}
         heatmapOpacity={heatmapOpacity}
         onOpacityChange={setHeatmapOpacity}
         heatmapData={heatmapData}

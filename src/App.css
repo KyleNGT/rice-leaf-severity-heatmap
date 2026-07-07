@@ -819,6 +819,14 @@ html, body, #root {
   color: var(--upload-danger);
 }
 
+/* Provenance hint: how the coordinates were obtained */
+.upload-location-source {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--upload-text-muted);
+}
+
 /* Status / Severity / Confidence — inline pills, one row */
 .upload-metrics {
   display: flex;

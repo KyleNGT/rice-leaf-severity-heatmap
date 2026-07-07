@@ -41,14 +41,20 @@ export default function SamplePanel({
   const confidencePct =
     draft?.confidence != null ? Math.round(parseFloat(draft.confidence) * 100) : null;
 
-  const handleFileChange = (e) => {
+  const handleFileChange = (source) => (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      onImageSelected(file);
+      onImageSelected(file, source);
     }
     // Reset so the same file can be re-selected
     e.target.value = '';
   };
+
+  const locationSourceLabel = {
+    gps: 'From GPS',
+    exif: 'From photo',
+    manual: 'Manual',
+  }[draft?.locationSource];
 
   const sourceButtons = (
     <div className="upload-sources">
@@ -82,14 +88,14 @@ export default function SamplePanel({
         accept="image/*"
         capture="environment"
         style={{ display: 'none' }}
-        onChange={handleFileChange}
+        onChange={handleFileChange('camera')}
       />
       <input
         ref={uploadRef}
         type="file"
         accept="image/*"
         style={{ display: 'none' }}
-        onChange={handleFileChange}
+        onChange={handleFileChange('gallery')}
       />
 
       {!draft && (
@@ -113,6 +119,10 @@ export default function SamplePanel({
             </span>
           </button>
 
+          {draft.locating && (
+            <p className="upload-analysis-loading">📍 Getting your location…</p>
+          )}
+
           <div className="upload-coords">
             <div className="upload-field">
               <label className="upload-label" htmlFor="draft-lat">
@@ -125,6 +135,7 @@ export default function SamplePanel({
                 inputMode="decimal"
                 placeholder="e.g. 15.470000"
                 value={draft.lat}
+                disabled={draft.locating}
                 onChange={(e) => onCoordChange('lat', e.target.value)}
               />
             </div>
@@ -140,10 +151,19 @@ export default function SamplePanel({
                 inputMode="decimal"
                 placeholder="e.g. 120.590000"
                 value={draft.lng}
+                disabled={draft.locating}
                 onChange={(e) => onCoordChange('lng', e.target.value)}
               />
             </div>
           </div>
+
+          {locationSourceLabel && !draft.locating && (
+            <p className="upload-location-source">📍 {locationSourceLabel}</p>
+          )}
+
+          {draft.locationError && (
+            <p className="upload-warning">⚠ {draft.locationError}</p>
+          )}
 
           {coordWarning && <p className="upload-warning">⚠ {coordWarning}</p>}
 
