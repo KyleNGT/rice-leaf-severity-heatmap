@@ -42,6 +42,7 @@ export default function MapView({
   onDrawingActionChange,
   onDrawingStateChange,
   mobileDrawerRef,
+  desktopDrawerRef,
 }) {
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [isLocating, setIsLocating] = useState(true);
@@ -109,6 +110,7 @@ export default function MapView({
         drawingAction={drawingAction}
         onDrawingActionChange={onDrawingActionChange}
         onDrawingStateChange={onDrawingStateChange}
+        drawerRef={desktopDrawerRef}
       />
 
       {/* Center-anchored drawing for mobile — only during initial placement */}

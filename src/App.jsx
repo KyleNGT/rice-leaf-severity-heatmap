@@ -63,11 +63,15 @@ export default function App() {
   const { getLocation } = useDeviceLocation();
   const isMobile = useIsMobileViewport();
   const mobileDrawerRef = useRef(null);
+  const desktopDrawerRef = useRef(null);
 
   // ── Mobile Center-Anchored Drawing Handlers ────────────────
   const handlePlacePoint = useCallback(() => mobileDrawerRef.current?.placePoint(), []);
   const handleUndoPoint = useCallback(() => mobileDrawerRef.current?.undoLast(), []);
   const handleFinishShape = useCallback(() => mobileDrawerRef.current?.finishShape(), []);
+
+  // ── Desktop Drawing Handlers ────────────────────────────────
+  const handleUndoVertex = useCallback(() => desktopDrawerRef.current?.undoLastVertex(), []);
 
   // ── Boundary Handler ───────────────────────────────────────
   const handleBoundaryCreated = useCallback((geoJSON) => {
@@ -297,10 +301,7 @@ export default function App() {
     <div className="app">
       {/* Header */}
       <header className="app-header">
-        <h1 className="app-title">
-          <span className="app-logo">🌾</span>
-          Rice Leaf Severity
-        </h1>
+        <h1 className="app-title">Rice Leaf Severity</h1>
         <StepperBar currentStep={currentStep} />
       </header>
 
@@ -345,6 +346,7 @@ export default function App() {
                 onDrawingActionChange={setDrawingAction}
                 onDrawingStateChange={setDrawingState}
                 mobileDrawerRef={mobileDrawerRef}
+                desktopDrawerRef={desktopDrawerRef}
               />
 
               {/* Center-anchored crosshair — mobile boundary drawing only */}
@@ -402,7 +404,7 @@ export default function App() {
                 >
                   {samples.length < 2
                     ? `Need at least 2 samples (${samples.length}/2)`
-                    : `🗺️ Generate Heatmap (${samples.length} samples)`}
+                    : `Generate Heatmap (${samples.length} samples)`}
                 </button>
               </div>
             )}
@@ -433,7 +435,7 @@ export default function App() {
             >
               {samples.length < 2
                 ? `Need at least 2 samples (${samples.length}/2)`
-                : `🗺️ Generate Heatmap (${samples.length} samples)`}
+                : `Generate Heatmap (${samples.length} samples)`}
             </button>
           </div>
 
@@ -466,6 +468,7 @@ export default function App() {
         onPlacePoint={handlePlacePoint}
         onUndoPoint={handleUndoPoint}
         onFinishShape={handleFinishShape}
+        onUndoVertex={handleUndoVertex}
       />
 
       {/* Color legend — visible when heatmap is shown */}

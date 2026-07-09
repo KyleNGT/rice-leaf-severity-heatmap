@@ -2,44 +2,44 @@
  * ============================================================
  * Rice Leaf Severity Heatmap — Design System
  * ============================================================
- * Mobile-first, glassmorphism-styled, dark-themed UI.
- * All interactive elements ≥ 48×48px for touch optimization.
- * Inter font from Google Fonts loaded in index.html.
+ * Mobile-first, light-themed UI: off-white canvas, white cards,
+ * flat emerald accent. All interactive elements ≥ 48×48px for
+ * touch optimization. System/San Francisco font stack.
  */
 
 /* ── CSS Reset & Variables ──────────────────────────────────── */
 :root {
   /* Surfaces */
-  --bg-primary: #0f172a;
-  --bg-glass: rgba(15, 23, 42, 0.75);
-  --bg-glass-light: rgba(30, 41, 59, 0.8);
-  --bg-card: rgba(30, 41, 59, 0.9);
+  --bg-primary: #f9fafb;
+  --bg-glass: rgba(255, 255, 255, 0.92);
+  --bg-glass-light: #ffffff;
+  --bg-card: #ffffff;
 
   /* Text */
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #212222;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
 
   /* Accents */
-  --accent-emerald: #10b981;
-  --accent-emerald-glow: rgba(16, 185, 129, 0.3);
-  --accent-amber: #f59e0b;
-  --accent-red: #ef4444;
-  --accent-orange: #f97316;
+  --accent-emerald: #046307;
+  --accent-emerald-glow: rgba(4, 99, 7, 0.1);
+  --accent-amber: #d7e051;
+  --accent-red: #ed5d54;
+  --accent-orange: #d7e051;
   --accent-blue: #3b82f6;
 
   /* Borders */
-  --border-subtle: rgba(148, 163, 184, 0.15);
-  --border-accent: rgba(16, 185, 129, 0.4);
+  --border-subtle: #e5e7eb;
+  --border-accent: rgba(4, 99, 7, 0.4);
 
   /* Shadows */
-  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 20px rgba(16, 185, 129, 0.15);
+  --shadow-lg: 0 6px 24px rgba(15, 23, 42, 0.1);
+  --shadow-glow: 0 4px 16px rgba(15, 23, 42, 0.06);
 
   /* Radii */
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 20px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
 
   /* Spacing */
@@ -74,7 +74,7 @@ html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
@@ -118,8 +118,8 @@ html, body, #root {
   justify-content: space-between;
   padding: var(--space-sm) var(--space-md);
   background: var(--bg-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -127,14 +127,7 @@ html, body, #root {
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
   white-space: nowrap;
-}
-
-.app-logo {
-  font-size: 1.25rem;
 }
 
 /* ── Stepper Bar ────────────────────────────────────────────── */
@@ -150,10 +143,6 @@ html, body, #root {
   font-weight: 600;
   color: var(--accent-emerald);
   white-space: nowrap;
-}
-
-.stepper-mobile-icon {
-  font-size: 0.85rem;
 }
 
 .stepper-mobile-text {
@@ -520,6 +509,16 @@ html, body, #root {
   margin-bottom: var(--space-md);
 }
 
+/* Cancel / Continue split while actively drawing (desktop) */
+.boundary-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.boundary-actions .btn {
+  flex: 1;
+}
+
 .btn-tool {
   flex: 1;
   display: flex;
@@ -529,7 +528,7 @@ html, body, #root {
   padding: 10px var(--space-sm);
   border: 1.5px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  background: var(--bg-glass-light);
+  background: var(--bg-primary);
   color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 600;
@@ -538,12 +537,10 @@ html, body, #root {
   min-width: 48px;
   touch-action: manipulation;
   transition: all 0.2s ease;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 .btn-tool:hover {
-  background: rgba(51, 65, 85, 0.6);
+  background: var(--bg-primary);
   border-color: var(--accent-emerald);
   color: var(--text-primary);
 }
@@ -556,7 +553,21 @@ html, body, #root {
   background: var(--accent-emerald-glow) !important;
   border-color: var(--accent-emerald) !important;
   color: var(--accent-emerald) !important;
-  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+/* Solid-fill emphasis for the primary tool action in a row (e.g. Place
+   Point) — distinct from .btn-tool-active, which marks a toggled-on mode. */
+.btn-tool-primary {
+  background: var(--accent-emerald);
+  border-color: var(--accent-emerald);
+  color: #ffffff;
+}
+
+.btn-tool-primary:hover {
+  background: var(--accent-emerald);
+  border-color: var(--accent-emerald);
+  color: #ffffff;
+  opacity: 0.92;
 }
 
 .btn-tool-icon {
@@ -577,8 +588,8 @@ html, body, #root {
   padding: var(--space-xs) var(--space-sm);
   margin-bottom: var(--space-md);
   border-radius: var(--radius-sm);
-  background: rgba(16, 185, 129, 0.08);
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  background: var(--accent-emerald-glow);
+  border: 1px solid var(--border-accent);
 }
 
 .boundary-status-dot {
@@ -974,35 +985,31 @@ html, body, #root {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--accent-emerald), #059669);
+  background: var(--accent-emerald);
   color: white;
-  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
 }
 
 .btn-primary:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+  opacity: 0.92;
 }
 
 .btn-secondary {
-  background: var(--bg-glass-light);
+  background: var(--bg-primary);
   color: var(--text-primary);
   border: 1px solid var(--border-subtle);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: rgba(51, 65, 85, 0.8);
+  border-color: var(--accent-emerald);
 }
 
 .btn-accent {
-  background: linear-gradient(135deg, var(--accent-amber), var(--accent-orange));
-  color: white;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  background: var(--accent-amber);
+  color: var(--text-primary);
 }
 
 .btn-accent:hover:not(:disabled) {
-  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
+  opacity: 0.92;
 }
 
 .btn-full {
@@ -1026,26 +1033,18 @@ html, body, #root {
 }
 
 .action-card {
-  background: var(--bg-glass);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: var(--space-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-glow);
 }
 
 .action-title {
   font-size: 1rem;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  color: var(--text-primary);
   margin-bottom: var(--space-sm);
-}
-
-.action-icon {
-  font-size: 1.2rem;
 }
 
 .action-desc {
@@ -1088,7 +1087,7 @@ html, body, #root {
   border-radius: 50%;
   background: var(--accent-emerald);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
+  box-shadow: 0 2px 8px rgba(4, 99, 7, 0.3);
 }
 
 .opacity-value {
@@ -1220,7 +1219,7 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.7);
+  background: rgba(33, 34, 34, 0.45);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   animation: fadeIn 0.2s ease-out;
@@ -1229,13 +1228,13 @@ html, body, #root {
 .loading-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   padding: var(--space-xl) var(--space-xl);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-md);
-  box-shadow: var(--shadow-lg), var(--shadow-glow);
+  box-shadow: var(--shadow-lg);
   min-width: 240px;
 }
 
@@ -1271,7 +1270,7 @@ html, body, #root {
 
 .loading-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent-emerald), #34d399);
+  background: var(--accent-emerald);
   border-radius: var(--radius-full);
   transition: width 0.3s ease;
 }

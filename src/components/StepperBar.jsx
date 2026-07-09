@@ -9,13 +9,7 @@
  * Heuristic: Visibility of system status — the user always
  * knows where they are in the workflow.
  */
-import { STEP_ORDER, STEP_LABELS, STEPS } from '../constants/constants';
-
-const STEP_ICONS = {
-  [STEPS.BOUNDARY]: '📐',
-  [STEPS.SAMPLING]: '🌾',
-  [STEPS.HEATMAP]: '🗺️',
-};
+import { STEP_ORDER, STEP_LABELS } from '../constants/constants';
 
 export default function StepperBar({ currentStep }) {
   const currentIdx = STEP_ORDER.indexOf(currentStep);
@@ -25,9 +19,6 @@ export default function StepperBar({ currentStep }) {
     <>
       {/* Mobile: compact pill showing only current step */}
       <div className="stepper-mobile">
-        <span className="stepper-mobile-icon">
-          {STEP_ICONS[currentStep]}
-        </span>
         <span className="stepper-mobile-text">
           Step {currentIdx + 1}/{totalSteps}
         </span>
@@ -48,9 +39,7 @@ export default function StepperBar({ currentStep }) {
               <div
                 className={`stepper-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
               >
-                <div className="stepper-icon">
-                  {isCompleted ? '✓' : STEP_ICONS[step]}
-                </div>
+                {isCompleted && <div className="stepper-icon">✓</div>}
                 <span className="stepper-label">{STEP_LABELS[step]}</span>
               </div>
               {idx < STEP_ORDER.length - 1 && (

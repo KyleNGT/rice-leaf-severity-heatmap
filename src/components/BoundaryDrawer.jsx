@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useImperativeHandle, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
@@ -18,6 +18,11 @@ import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
  *   drawingAction   — 'draw' | 'edit' | 'clear' | null
  *   onDrawingActionChange(action) — used to reset 'clear' back to null
  *   onDrawingStateChange({ isDrawing, vertexCount }) — feedback
+ *   drawerRef       — imperative handle exposing undoLastVertex(), so the
+ *                     ActionPanel's "Undo" button can pop the last placed
+ *                     vertex without disrupting the in-progress draw
+ *                     session (unlike `drawingAction`, which always
+ *                     disables/re-enables draw mode on change).
  *
  * Heuristics applied:
  *   - User control & freedom: user can cancel, undo, redraw
@@ -31,6 +36,7 @@ export default function BoundaryDrawer({
   drawingAction,
   onDrawingActionChange,
   onDrawingStateChange,
+  drawerRef,
 }) {
   const map = useMap();
   const layerRef = useRef(null);
@@ -85,10 +91,13 @@ export default function BoundaryDrawer({
       onDrawingStateChange?.({ isDrawing: false, vertexCount: 0 });
     };
 
-    // Track vertex placement for live feedback — pm:vertexadded fires on the
-    // working layer itself, not the map, so the listener must be bound there.
-    // The in-progress working layer is a plain L.Polyline (flat getLatLngs()),
-    // not yet a polygon with a nested ring, so it must be counted flat.
+    // Track vertex placement for live feedback — pm:vertexadded/vertexremoved
+    // fire on the working layer itself, not the map, so the listener must be
+    // bound there. Both share this one handler: it recomputes the count from
+    // getLatLngs() rather than incrementing/decrementing, so it's correct
+    // either way. The in-progress working layer is a plain L.Polyline (flat
+    // getLatLngs()), not yet a polygon with a nested ring, so it must be
+    // counted flat.
     const handleVertexAdded = (e) => {
       const latlngs = e.layer?.getLatLngs?.() || [];
       const count = Array.isArray(latlngs[0]) ? latlngs[0].length : latlngs.length;
@@ -98,10 +107,12 @@ export default function BoundaryDrawer({
     const handleDrawStart = (e) => {
       onDrawingStateChange?.({ isDrawing: true, vertexCount: 0 });
       e.workingLayer?.on('pm:vertexadded', handleVertexAdded);
+      e.workingLayer?.on('pm:vertexremoved', handleVertexAdded);
     };
 
     const handleDrawEnd = (e) => {
       e.workingLayer?.off('pm:vertexadded', handleVertexAdded);
+      e.workingLayer?.off('pm:vertexremoved', handleVertexAdded);
       onDrawingStateChange?.({ isDrawing: false, vertexCount: 0 });
     };
 
@@ -151,6 +162,25 @@ export default function BoundaryDrawer({
       onDrawingActionChange?.(null);
     }
   }, [map, isActive, drawingAction, onBoundaryCreated, onDrawingActionChange, onDrawingStateChange]);
+
+  // ── Imperative undo (Undo button) ───────────────────────────
+  // Pops the last placed vertex off the in-progress polygon without
+  // touching draw mode itself — routing this through `drawingAction`
+  // instead would trip the effect above's unconditional
+  // disableDraw()-then-re-enable, aborting the whole in-progress shape.
+  // `_removeLastVertex` is Geoman's own internal method (no public
+  // wrapper exists); it's exactly what Geoman's own hidden toolbar
+  // action calls. If only one vertex remains, Geoman itself ends the
+  // draw session (mirrors Cancel) rather than leaving an empty shape.
+  const undoLastVertex = () => {
+    if (!map) return;
+    const drawHandler = map.pm.Draw?.Polygon;
+    if (drawHandler?.enabled?.()) {
+      drawHandler._removeLastVertex();
+    }
+  };
+
+  useImperativeHandle(drawerRef, () => ({ undoLastVertex }));
 
   return null; // No DOM — the ActionPanel renders the custom buttons
 }

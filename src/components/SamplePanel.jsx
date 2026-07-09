@@ -64,7 +64,6 @@ export default function SamplePanel({
         onClick={() => cameraRef.current?.click()}
         disabled={sourcesDisabled}
       >
-        <span aria-hidden="true">📷</span>
         <span>Camera</span>
       </button>
       <button
@@ -73,7 +72,6 @@ export default function SamplePanel({
         onClick={() => uploadRef.current?.click()}
         disabled={sourcesDisabled}
       >
-        <span aria-hidden="true">🖼️</span>
         <span>Gallery</span>
       </button>
     </div>
