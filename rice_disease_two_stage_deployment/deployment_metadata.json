@@ -1,0 +1,62 @@
+{
+  "architecture": "two_stage_segformer_b1",
+  "model_name": "nvidia/segformer-b1-finetuned-ade-512-512",
+  "selected_phase2_fold": 5,
+  "image_size": 512,
+  "id2label": {
+    "0": "background",
+    "1": "healthy_leaf",
+    "2": "leaf_blast",
+    "3": "brown_spot",
+    "4": "bacterial_blight"
+  },
+  "label2id": {
+    "background": 0,
+    "healthy_leaf": 1,
+    "leaf_blast": 2,
+    "brown_spot": 3,
+    "bacterial_blight": 4
+  },
+  "disease_class_ids": [
+    2,
+    3,
+    4
+  ],
+  "leaf_crop_padding_fraction": 0.05,
+  "mask_threshold": 127,
+  "minimum_disease_fraction": 0.001,
+  "normalization_mean": [
+    0.48500001430511475,
+    0.4560000002384186,
+    0.4059999883174896
+  ],
+  "normalization_std": [
+    0.2290000021457672,
+    0.2240000069141388,
+    0.22499999403953552
+  ],
+  "pdla_formula": "100 * disease_pixels / phase1_leaf_pixels",
+  "test_metrics": {
+    "selected_fold": 5,
+    "test_loss": 0.087796608141313,
+    "test_cross_entropy": 0.03335717674538804,
+    "test_dice_loss": 0.18146476335823536,
+    "segmentation_pixel_accuracy": 0.9869511074490017,
+    "segmentation_mean_iou": 0.8470082818201987,
+    "segmentation_mean_dice": 0.9128991579191457,
+    "segmentation_mean_iou_no_background": 0.8097582161130421,
+    "segmentation_mean_dice_no_background": 0.8916238770412518,
+    "segmentation_mean_disease_iou": 0.7547797546917839,
+    "segmentation_mean_disease_dice": 0.8597702877416092,
+    "segmentation_mean_precision_no_background": 0.8807760120397574,
+    "segmentation_mean_recall_no_background": 0.9029562537750274,
+    "segmentation_mean_f1_no_background": 0.8916238770412519,
+    "classification_accuracy": 0.9947712418300654,
+    "classification_precision_macro": 0.9947636717533297,
+    "classification_recall_macro": 0.9946581196581197,
+    "classification_f1_macro": 0.99470407056568,
+    "classification_precision_weighted": 0.9947705396735669,
+    "classification_recall_weighted": 0.9947712418300654,
+    "classification_f1_weighted": 0.9947640826544385
+  }
+}
