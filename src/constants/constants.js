@@ -7,7 +7,54 @@
  */
 
 // ── Sampling Limits ──────────────────────────────────────────
+/** Max plant nodes (sample points) per field session. */
 export const MAX_SAMPLES = 50;
+
+/**
+ * Max photos per plant. A node is one rice plant, and a rice leaf is long
+ * and thin enough that a single leaf often needs several frames — plus field
+ * practice samples several leaves per plant.
+ *
+ * Capped at 10 because analysis is serialized (see mockMLService.js), each
+ * photo carries ANALYZE_TIMEOUT_MS, and a mid-range Android holds every
+ * photo's blob in memory until the plant is committed.
+ */
+export const MAX_IMAGES_PER_SAMPLE = 10;
+
+// ── Leaf Plausibility Guard ──────────────────────────────────
+/**
+ * Phase 1 is a binary leaf/background segmenter with **no negative class** —
+ * it has no way to say "this is not a rice leaf". The API only reports
+ * `no_leaf_detected` when it segments literally zero leaf pixels, which in
+ * practice only happens on unstructured noise. Everything else gets some
+ * mask, and a PDLA is computed from it.
+ *
+ * These bounds flag photos whose leaf mask is implausible for a real
+ * handheld shot. Measured on synthetic probes (backend/inference.py loaded
+ * directly):
+ *
+ *   subject               frame_fraction   mask_confidence
+ *   textured soil            0.003            0.52
+ *   grey concrete            0.295            0.56
+ *   textured skin            0.998            0.78
+ *   blue sky                 0.9997           0.96
+ *   dense green canopy       1.000            0.99
+ *   leaf blade on soil       0.139            0.958   <- a real shot looks like this
+ *
+ * Note the dominant failure is a mask that covers *everything*, not one that
+ * covers too little: a uniform surface gets labelled leaf edge-to-edge, with
+ * high confidence. A real leaf photo always retains some background, so a
+ * near-total mask means leaf isolation found nothing to isolate and PDLA's
+ * denominator has become "the whole frame".
+ *
+ * THESE ARE UNTUNED HEURISTICS from synthetic images, not field photos. They
+ * reduce obviously-bad input; they are not a rice-leaf detector, and they
+ * cannot become one without a model trained with a negative class. Re-measure
+ * against real captures before the thesis quotes any of these numbers.
+ */
+export const MIN_LEAF_FRAME_FRACTION = 0.02;
+export const MAX_LEAF_FRAME_FRACTION = 0.97;
+export const MIN_LEAF_MASK_CONFIDENCE = 0.7;
 
 // ── IDW (Inverse Distance Weighting) Parameters ─────────────
 /**
@@ -62,6 +109,17 @@ export const ESRI_MAX_NATIVE_ZOOM = 19;
 // ── Geolocation ──────────────────────────────────────────────
 /** Max time to wait for a live GPS fix during camera capture. */
 export const GEO_TIMEOUT_MS = 10000;
+
+// ── ML Inference API ─────────────────────────────────────────
+/**
+ * SegFormer 2-stage inference endpoint (backend/server.py). In dev,
+ * Vite proxies this relative path to the FastAPI server — see
+ * vite.config.js's server.proxy. Real inference is slower than the
+ * mock's fake 1.5–2.5s delay, especially on CPU, hence the longer
+ * timeout below.
+ */
+export const ANALYZE_ENDPOINT = '/api/analyze';
+export const ANALYZE_TIMEOUT_MS = 30000;
 
 // ── Severity Color Scale ─────────────────────────────────────
 /**
