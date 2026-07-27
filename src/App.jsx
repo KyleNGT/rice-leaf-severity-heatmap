@@ -113,8 +113,15 @@ export default function App() {
   const handleUndoVertex = useCallback(() => desktopDrawerRef.current?.undoLastVertex(), []);
 
   // ── Boundary Handler ───────────────────────────────────────
+  // Defensive, not currently load-bearing: the only route back to the
+  // boundary step is handleReset, which reloads the page, so today a
+  // boundary edit can't actually reach a step with a live heatmapData. If
+  // that ever changes, dropping the stale grid here (rather than
+  // re-clipping it to a shape it wasn't computed for) matches how
+  // handleResumeSampling already invalidates the heatmap.
   const handleBoundaryCreated = useCallback((geoJSON) => {
     setBoundary(geoJSON);
+    setHeatmapData(null);
   }, []);
 
   // ── Step Navigation ────────────────────────────────────────
