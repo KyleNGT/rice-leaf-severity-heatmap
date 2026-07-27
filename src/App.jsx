@@ -7,9 +7,11 @@ import SampleSheet from './components/SampleSheet';
 import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
+import ImageAlignmentModal from './components/ImageAlignmentModal';
 import { useExifGps } from './hooks/useExifGps';
 import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
+import { useAlignmentQueue } from './hooks/useAlignmentQueue';
 import { analyzePlantImage } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
 import { summarizePlant, isUsableImage } from './utils/aggregateSample';
@@ -103,6 +105,22 @@ export default function App() {
   const isMobile = useIsMobileViewport();
   const mobileDrawerRef = useRef(null);
   const desktopDrawerRef = useRef(null);
+
+  // ── Alignment Queue State ───────────────────────────────────
+  // Un-aligned photos never enter draftSample.images — they wait here until
+  // ImageAlignmentModal confirms a crop. See useAlignmentQueue.js's header
+  // for why this keeps aggregateSample.js/canAddSample untouched.
+  const alignQueue = useAlignmentQueue();
+  // Set at enqueue (a new batch of photos was just picked), cleared the
+  // moment location resolution has been attempted for this batch — at most
+  // once per batch, on whichever photo is confirmed first (see
+  // handleAlignedPhoto). Independent of the queue itself so a skipped photo
+  // can't consume it.
+  const batchLocationPendingRef = useRef(false);
+  // A camera batch's GPS fix is requested at enqueue time, not at first
+  // confirm — alignment often takes longer than the fix itself, so this lets
+  // the two overlap instead of making the farmer wait twice.
+  const pendingGpsPromiseRef = useRef(null);
 
   // ── Mobile Center-Anchored Drawing Handlers ────────────────
   const handlePlacePoint = useCallback(() => mobileDrawerRef.current?.placePoint(), []);
@@ -206,120 +224,156 @@ export default function App() {
   );
 
   // ── Image Processing Pipeline ──────────────────────────────
-  // Photos APPEND to the current plant draft (creating one if there isn't
-  // yet), each analyzed independently. The plant only enters `samples` when
-  // the user taps "Save Plant"; canAddSample requires at least one usable
-  // photo and a non-null pooled severity, so a plant whose photos all failed
-  // can never reach the interpolation grid.
+  // Photos no longer go straight to newDraftImage/runAnalysis. Every photo —
+  // camera or gallery — first queues for ImageAlignmentModal; only a
+  // confirmed, cropped photo (handleAlignedPhoto, below) ever reaches the
+  // draft. This function's only job is to seed that queue.
   //
   // Location is resolved ONCE PER PLANT, not per photo — the farmer walks
   // around a single plant taking several shots, and re-fixing GPS each time
-  // would jitter the pin. It branches by `source`:
-  //   - 'camera' (live capture): NEVER read EXIF — iOS WebKit strips GPS
-  //     from camera-captured photos anyway — so fetch a live fix via
-  //     navigator.geolocation (useDeviceLocation) instead.
-  //   - 'gallery' (deferred upload): NEVER call navigator.geolocation — the
-  //     device's current position has no relation to where a previously-taken
-  //     photo was shot (e.g. uploading from the office later). Best-effort
-  //     EXIF GPS instead.
+  // would jitter the pin. It branches by `source`, same as before:
+  //   - 'camera': NEVER read EXIF — iOS WebKit strips GPS from
+  //     camera-captured photos anyway — so fetch a live fix via
+  //     navigator.geolocation instead. Fired here, immediately, rather than
+  //     after cropping — alignment usually takes longer than the fix, so the
+  //     two overlap instead of making the farmer wait twice.
+  //   - 'gallery': NEVER call navigator.geolocation — the device's current
+  //     position has no relation to where a previously-taken photo was shot.
+  //     Best-effort EXIF GPS instead, applied in handleAlignedPhoto once the
+  //     first photo of the batch is actually confirmed (not just picked) —
+  //     so skipping a photo in the aligner can't set the plant's location
+  //     from a shot the farmer decided not to use.
   // Either way, coordinates already set are never overwritten, and a manual
-  // edit is never overridden. Both paths fall back to the lat/lng fields.
+  // edit is never overridden.
   const handleImagesSelected = useCallback(
-    async (fileList, source) => {
+    (fileList, source) => {
+      // Defends against a late `onChange` firing on some Android pickers
+      // while a queue from a previous tap is still open.
+      if (alignQueue.isAligning) return;
+
       const files = Array.from(fileList ?? []);
       if (files.length === 0) return;
 
-      const isCamera = source === 'camera';
-      const candidates = files.map((file) => newDraftImage(file, source));
-
-      // Decided synchronously against the live draft, so the code below
-      // knows exactly which photos it took on.
+      // Decided synchronously against the live draft, exactly as before —
+      // just at selection time instead of after cropping, since capacity
+      // doesn't change while the aligner is open.
       const prev = draftRef.current;
-      const existing = prev?.images ?? [];
-      const room = Math.max(0, MAX_IMAGES_PER_SAMPLE - existing.length);
-      const accepted = candidates.slice(0, room);
-
-      // Photos beyond MAX_IMAGES_PER_SAMPLE never enter state — release
-      // their blobs rather than leaking them for the session.
-      for (const candidate of candidates.slice(accepted.length)) {
-        URL.revokeObjectURL(candidate.thumbnail);
-      }
+      const room = Math.max(0, MAX_IMAGES_PER_SAMPLE - (prev?.images.length ?? 0));
+      const accepted = files.slice(0, room);
       if (accepted.length === 0) return;
 
+      const isCamera = source === 'camera';
       const shouldLocate =
         isCamera &&
         !prev?.locating &&
         prev?.locationSource !== 'manual' &&
         !(prev?.lat || prev?.lng);
 
+      batchLocationPendingRef.current = true;
+      pendingGpsPromiseRef.current = shouldLocate ? getLocation() : null;
+
+      alignQueue.enqueue(accepted, source);
+    },
+    [alignQueue, getLocation]
+  );
+
+  // ── Alignment Confirm / Cancel ──────────────────────────────
+  // The counterpart to handleImagesSelected above: runs once per photo the
+  // user confirms in ImageAlignmentModal, with the cropped File it produced.
+  const handleAlignedPhoto = useCallback(
+    (croppedFile, originalFile) => {
+      const source = alignQueue.queue?.source;
+      const img = newDraftImage(croppedFile, source);
+      const isFirstOfBatch = batchLocationPendingRef.current;
+      const willLocate = isFirstOfBatch && source === 'camera' && !!pendingGpsPromiseRef.current;
+
+      const prev = draftRef.current;
       applyDraft(
         prev
           ? {
               ...prev,
-              images: [...existing, ...accepted],
-              locating: prev.locating || shouldLocate,
+              images: [...prev.images, img],
+              locating: prev.locating || willLocate,
             }
           : {
-              images: accepted,
+              images: [img],
               lat: '',
               lng: '',
-              locating: shouldLocate,
+              locating: willLocate,
               locationSource: null,
               locationError: '',
               capturedAt: null,
             }
       );
 
-      for (const candidate of accepted) {
-        runAnalysis(candidate.id, candidate.file);
-      }
+      runAnalysis(img.id, croppedFile);
 
-      if (shouldLocate) {
-        try {
-          const pos = await getLocation();
-          applyDraft((current) =>
-            current
-              ? {
-                  ...current,
-                  lat: pos.lat.toFixed(6),
-                  lng: pos.lng.toFixed(6),
-                  capturedAt: pos.timestamp,
-                  locationSource: 'gps',
-                  locating: false,
-                  locationError: '',
-                }
-              : current
-          );
-        } catch (err) {
-          applyDraft((current) =>
-            current ? { ...current, locating: false, locationError: err.message } : current
-          );
+      if (isFirstOfBatch) {
+        batchLocationPendingRef.current = false;
+
+        if (source === 'camera' && pendingGpsPromiseRef.current) {
+          const promise = pendingGpsPromiseRef.current;
+          pendingGpsPromiseRef.current = null;
+          promise
+            .then((pos) => {
+              applyDraft((current) =>
+                current
+                  ? {
+                      ...current,
+                      lat: pos.lat.toFixed(6),
+                      lng: pos.lng.toFixed(6),
+                      capturedAt: pos.timestamp,
+                      locationSource: 'gps',
+                      locating: false,
+                      locationError: '',
+                    }
+                  : current
+              );
+            })
+            .catch((err) => {
+              applyDraft((current) =>
+                current ? { ...current, locating: false, locationError: err.message } : current
+              );
+            });
+        } else if (source !== 'camera') {
+          // EXIF from the original — canvas re-encoding strips it from the
+          // cropped file, so it can only ever be read here.
+          extractGps(originalFile).then((gps) => {
+            if (!gps.hasGps) return;
+            applyDraft((current) => {
+              if (!current) return current;
+              // Fill only a blank plant. A coordinate already set — by GPS,
+              // by an earlier photo's EXIF, or by hand — stays put.
+              if (current.locationSource === 'manual' || current.lat || current.lng) {
+                return current;
+              }
+              return {
+                ...current,
+                lat: gps.lat.toFixed(6),
+                lng: gps.lng.toFixed(6),
+                locationSource: 'exif',
+                locationError: '',
+              };
+            });
+          });
         }
-        return;
       }
 
-      if (!isCamera) {
-        const gps = await extractGps(files[0]);
-        if (!gps.hasGps) return;
-
-        applyDraft((current) => {
-          if (!current) return current;
-          // Fill only a blank plant. A coordinate already set — by GPS, by an
-          // earlier photo's EXIF, or by hand — stays put.
-          if (current.locationSource === 'manual' || current.lat || current.lng) return current;
-
-          return {
-            ...current,
-            lat: gps.lat.toFixed(6),
-            lng: gps.lng.toFixed(6),
-            locationSource: 'exif',
-            locationError: '',
-          };
-        });
-      }
+      alignQueue.advance();
     },
-    [applyDraft, extractGps, getLocation, runAnalysis]
+    [alignQueue, applyDraft, runAnalysis, extractGps]
   );
+
+  const handleAlignCancel = useCallback(() => {
+    batchLocationPendingRef.current = false;
+    if (pendingGpsPromiseRef.current) {
+      // Nothing will ever attach a handler to this promise now — swallow a
+      // late rejection so it doesn't surface as an unhandled one.
+      pendingGpsPromiseRef.current.catch(() => {});
+      pendingGpsPromiseRef.current = null;
+    }
+    alignQueue.cancelAll();
+  }, [alignQueue]);
 
   // ── Per-Photo Actions ───────────────────────────────────────
   const handleRemoveDraftImage = useCallback(
@@ -512,10 +566,11 @@ export default function App() {
     setHeatmapData(null);
     setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
     applyDraft(null);
+    handleAlignCancel();
     setMapFullscreen(false);
     // Force a full page reload to reset Leaflet + Geoman state cleanly
     window.location.reload();
-  }, [applyDraft]);
+  }, [applyDraft, handleAlignCancel]);
 
   // ── Derived Flags ───────────────────────────────────────────
   // Desktop keeps the side-by-side boxed-card split (with its own
@@ -733,6 +788,24 @@ export default function App() {
 
       {/* Color legend — visible when heatmap is shown */}
       {currentStep === STEPS.HEATMAP && heatmapData && <ColorLegend />}
+
+      {/* Alignment modal — a direct child of .app, never nested inside
+          <SampleSheet>: .sheet carries a CSS transform, which would make it
+          the containing block for this modal's position:fixed root and drag
+          it around with the sheet's translate. Covers both the desktop
+          split and the mobile sheet identically, same as the map-fullscreen
+          takeover does. */}
+      {alignQueue.isAligning && (
+        <ImageAlignmentModal
+          file={alignQueue.currentFile}
+          imageUrl={alignQueue.currentUrl}
+          photoIndex={alignQueue.queue.index + 1}
+          totalCount={alignQueue.queue.totalCount}
+          onConfirm={(croppedFile) => handleAlignedPhoto(croppedFile, alignQueue.currentFile)}
+          onSkip={alignQueue.skipCurrent}
+          onCancel={handleAlignCancel}
+        />
+      )}
 
       {/* Loading overlay */}
       {isProcessing && (

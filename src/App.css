@@ -699,6 +699,37 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+.upload-source-btn-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ── Add Another Leaf (Step 2 — appending to an existing draft) ──
+   Visually distinct from the initial Camera/Gallery pair above: a
+   dashed emerald-tinted "add" affordance plus an explicit label, so
+   first-time users don't mistake it for starting a new plant. */
+.upload-add-leaf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.upload-add-leaf-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--upload-emerald);
+}
+
+.upload-sources--add .upload-source-btn {
+  border: 1.5px solid var(--upload-emerald);
+  background: rgba(4, 99, 7, 0.06);
+  color: var(--upload-emerald);
+}
+
+.upload-sources--add .upload-source-btn:hover:not(:disabled) {
+  background: rgba(4, 99, 7, 0.12);
+}
+
 .upload-counter {
   display: flex;
   align-items: center;
@@ -1009,7 +1040,41 @@ html, body, #root {
   color: var(--upload-text-muted);
 }
 
+/* Discard (destructive) + Save (primary) side by side, so the two
+   plant-level exits from the draft are equally visible and clearly
+   differentiated by color rather than position alone. */
+.upload-actions-row {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.upload-btn-discard {
+  flex: 1;
+  min-height: 48px;
+  padding: 12px var(--space-md);
+  border: 1.5px solid var(--upload-danger);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--upload-danger);
+  background: #ffffff;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.1s ease;
+}
+
+.upload-btn-discard:hover {
+  background: var(--upload-danger);
+  color: #ffffff;
+}
+
+.upload-btn-discard:active {
+  transform: scale(0.98);
+}
+
 .upload-btn-add {
+  flex: 2;
   min-height: 48px;
   padding: 12px var(--space-lg);
   border: none;
@@ -1069,6 +1134,336 @@ html, body, #root {
   font-size: 18px;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+/* ── Discard Plant Confirmation ───────────────────────────────── */
+.upload-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-loading);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  background: rgba(15, 23, 42, 0.5);
+  animation: fadeIn 0.15s ease-out;
+}
+
+.upload-confirm-dialog {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.upload-confirm-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--upload-text);
+}
+
+.upload-confirm-body {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--upload-text-muted);
+}
+
+.upload-confirm-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.upload-confirm-actions .upload-mini-btn {
+  flex: 1;
+}
+
+.upload-btn-discard-confirm {
+  flex: 1;
+  min-height: 48px;
+  padding: 12px var(--space-md);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--upload-danger);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.upload-btn-discard-confirm:active {
+  transform: scale(0.98);
+}
+
+/* ── Leaf Alignment (Step 2 — mandatory crop before analysis) ─── */
+/* Every photo, camera or gallery, passes through here before it ever
+   becomes a draft image — see useAlignmentQueue.js and
+   ImageAlignmentModal.jsx. Rendered from App.jsx as a SIBLING of
+   <SampleSheet>, never nested inside it: `.sheet` carries a CSS transform
+   (translateY, even at 0 in its expanded state, still establishes a
+   containing block per spec), which would drag a nested `position: fixed`
+   overlay around with the sheet instead of the viewport. Because it's
+   mounted outside .upload-panel/.sheet/.map-card/.mobile-sample-actions,
+   it — alone among the panels in this file — must redeclare the
+   --upload-* token block itself; it is not in :root. */
+.align-overlay {
+  --upload-canvas: #f9fafb;
+  --upload-card-border: #e5e7eb;
+  --upload-text: #212222;
+  --upload-text-muted: #6b7280;
+  --upload-emerald: #046307;
+  --upload-warning: #d7e051;
+  --upload-danger: #ed5d54;
+
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-loading);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom, 16px));
+  background: #0f172a;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.align-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.align-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.align-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.align-progress {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Flex-grow so the stage claims whatever vertical space the header, hint,
+   controls, warning and actions leave behind — a real "viewfinder" area,
+   deliberately NOT locked to the crop's own aspect ratio (unlike the old
+   per-region design). react-easy-crop centers a smaller, explicitly-sized
+   crop box (`cropSize`, measured off this element — see
+   ImageAlignmentModal.jsx) within whatever space this ends up being. */
+.align-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  touch-action: none;
+}
+
+/* Styles react-easy-crop's OWN crop-box element (via classes.cropAreaClassName
+   on <Cropper>), not a separately-drawn overlay — the library appends this
+   class alongside its own `reactEasyCrop_CropArea`, which already dims
+   everything outside the box via a `box-shadow: 0 0 0 9999em` trick (see
+   node_modules/react-easy-crop/react-easy-crop.css). This rule only adds a
+   border and a very light interior tint on top of that. Compound selector,
+   not `!important`: the library's own stylesheet is injected into <head> at
+   runtime, so its order relative to this file isn't guaranteed — a
+   two-class selector (specificity 0,0,2,0) reliably beats the library's
+   single-class rule (0,0,1,0) regardless of source order. */
+.align-stage .align-frame {
+  border: 3px solid #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.align-hint {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Two instances: a Zoom row and a Straighten (fine-rotation) row — same
+   label + slider layout, reused rather than duplicated. */
+.align-controls {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.align-control-label {
+  flex-shrink: 0;
+  width: 68px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.align-zoom {
+  flex: 1;
+  min-height: 48px;
+  touch-action: manipulation;
+}
+
+.align-zoom:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Rotate 90° + Flip Horizontal + Flip Vertical — the three "structural"
+   transforms, grouped separately from the continuous zoom/straighten
+   sliders above. */
+.align-transform-row {
+  flex-shrink: 0;
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.align-rotate-btn,
+.align-flip-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: 48px;
+  padding: 10px var(--space-sm);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.align-rotate-btn:active,
+.align-flip-btn:active {
+  transform: scale(0.97);
+}
+
+.align-flip-btn.is-selected {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.align-rotate-btn:disabled,
+.align-flip-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.align-warning {
+  flex-shrink: 0;
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-md);
+  background: rgba(237, 93, 84, 0.18);
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.align-actions {
+  flex-shrink: 0;
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.align-btn-skip {
+  flex: 1;
+  min-height: 48px;
+  padding: 12px var(--space-md);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.align-btn-skip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.align-btn-confirm {
+  flex: 2;
+  min-height: 48px;
+  padding: 12px var(--space-lg);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--upload-emerald);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 0.2s ease, transform 0.1s ease;
+}
+
+.align-btn-confirm:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.align-btn-confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Tablet+: the crop box no longer needs to claim the full viewport width. */
+@media (min-width: 768px) {
+  .align-overlay {
+    padding: var(--space-lg);
+  }
+
+  .align-controls,
+  .align-transform-row,
+  .align-actions {
+    max-width: 480px;
+    width: 100%;
+    margin-inline: auto;
+  }
 }
 
 /* ── Buttons ────────────────────────────────────────────────── */

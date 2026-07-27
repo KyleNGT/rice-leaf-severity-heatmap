@@ -51,10 +51,124 @@ export const MAX_IMAGES_PER_SAMPLE = 10;
  * reduce obviously-bad input; they are not a rice-leaf detector, and they
  * cannot become one without a model trained with a negative class. Re-measure
  * against real captures before the thesis quotes any of these numbers.
+ *
+ * Post-crop note: since the alignment step (ImageAlignmentModal.jsx) every
+ * photo reaching this guard is cropped exactly to the static framing
+ * rectangle's boundary (ALIGN_OUTPUT_WIDTH × ALIGN_OUTPUT_HEIGHT) — there is
+ * no separate outer frame with guaranteed margin around it the way the old
+ * per-region stencils had (each of those enclosed a fixed, small fraction of
+ * a larger box, so background survived regardless of how tightly the user
+ * filled the outline). Now, how much background survives is entirely up to
+ * how loosely the user centers their leaf in the box, per the on-screen
+ * instruction text. If well-aligned real photos start landing close to
+ * MAX_LEAF_FRAME_FRACTION (0.97), that is the first constant to revisit —
+ * the safety margin this guard used to get for free is now just a soft
+ * expectation, not a structural guarantee. The probe table above was
+ * measured on *uncropped* images and is no longer the input distribution
+ * this guard actually sees; re-measure it on real cropped field captures
+ * before quoting either bound.
  */
 export const MIN_LEAF_FRAME_FRACTION = 0.02;
 export const MAX_LEAF_FRAME_FRACTION = 0.97;
 export const MIN_LEAF_MASK_CONFIDENCE = 0.7;
+
+// ── Normalized Leaf Capture (Static Framing Rectangle + Alignment Crop) ─
+/**
+ * Every photo — camera or gallery — is forced through a fixed capture
+ * geometry before it reaches the ML pipeline: align the leaf inside one
+ * static rectangle, crop exactly to it. There is no per-photo choice of
+ * shape (there used to be three region-specific stencils sharing one crop
+ * box; now there's a single rectangle, which is simpler and changes nothing
+ * about why this works) — every photo still ends up at the same fixed
+ * output size, which is what stops Σ leaf_pixels in aggregateSample.js from
+ * varying with framing distance. See the pooling note there.
+ */
+
+/**
+ * Fixed alignment crop output — a narrow portrait rectangle (aspect
+ * literally ALIGN_FRAME_WIDTH_FRACTION / ALIGN_FRAME_HEIGHT_FRACTION below,
+ * i.e. 0.3 / 0.8 = 0.375), matching a single rice leaf's own long-and-thin
+ * proportions more tightly than the previous 3:4 frame did. 1600 on the long
+ * edge sits safely under backend/inference.py's DEFAULT_MAX_SIDE (2048), so
+ * `_downscale` there returns scale = 1.0 for EVERY photo, not just usually.
+ * That turns leaf_frame_fraction's denominator (work_w × work_h) into the
+ * same constant for every photo, with zero resampling variance between them.
+ * Today a 4032×3024 photo and a 1600×1200 photo differ 4× in effective
+ * scale, and therefore in pixel count, for identical tissue; this one change
+ * is what removes that variance.
+ */
+export const ALIGN_OUTPUT_WIDTH = 600;
+export const ALIGN_OUTPUT_HEIGHT = 1600;
+export const ALIGN_ASPECT = ALIGN_OUTPUT_WIDTH / ALIGN_OUTPUT_HEIGHT;
+
+/**
+ * On-screen layout ONLY — how large the visible framing rectangle is drawn
+ * relative to the alignment stage's own measured size (via a ResizeObserver
+ * in ImageAlignmentModal.jsx), leaving visible dimmed margin on every side
+ * rather than the rectangle filling its container edge-to-edge. This is
+ * deliberately separate from ALIGN_ASPECT/ALIGN_OUTPUT_WIDTH/HEIGHT above,
+ * which govern the actual EXPORTED crop and never change with device or
+ * viewport size — only the on-screen pixel size of the rectangle varies by
+ * device, never what gets cropped out of the source photo. Their ratio
+ * (0.3 / 0.8) must equal ALIGN_ASPECT, or the visible box and the exported
+ * crop would disagree in shape.
+ */
+export const ALIGN_FRAME_WIDTH_FRACTION = 0.3;
+export const ALIGN_FRAME_HEIGHT_FRACTION = 0.8;
+
+/**
+ * JPEG encode quality for the cropped output. This blob is the measurement
+ * input, not a preview — below ~0.85 chroma subsampling starts merging lesion
+ * boundaries into leaf tissue and biases PDLA. Above ~0.92 the file grows
+ * with no benefit a 512×512 SegFormer input could use.
+ */
+export const ALIGN_JPEG_QUALITY = 0.92;
+
+/** How far the user can pinch/slider-zoom in the alignment cropper. */
+export const ALIGN_MIN_ZOOM = 0.4;
+export const ALIGN_MAX_ZOOM = 5;
+
+/**
+ * Rotation is coarse + fine, matching how phone photo editors (e.g. iOS
+ * Photos) split "my photo is sideways" from "let me straighten the horizon":
+ *
+ *   - Coarse: a quick-rotate button steps `baseRotation` by this many degrees
+ *     (0°/90°/180°/270°), for fixing a sideways photo in one tap.
+ *   - Fine: a continuous slider adjusts `fineRotation` within
+ *     ±ALIGN_FINE_ROTATION_RANGE_DEG, for straightening. Tapping the quick
+ *     button resets fineRotation to 0, so the slider always reads relative
+ *     to the current quarter-turn.
+ *
+ * The two sum to the single `rotation` value passed to <Cropper> and into
+ * cropToStencil.js. Rotation itself was never restricted to multiples of
+ * this step — only the OLD confirm-gate math was (see
+ * getCropOverflowFraction's history in cropToStencil.js); that gate is now
+ * an exact inverse-transform containment check at ANY angle, not just
+ * 0/90/180/270, so nothing here caps what `rotation` can actually be.
+ */
+export const ALIGN_ROTATION_STEP_DEG = 90;
+
+/** Fine-rotation slider range, in degrees each direction from 0. */
+export const ALIGN_FINE_ROTATION_RANGE_DEG = 45;
+
+/**
+ * How much of the crop rect is allowed to hang off the source image before
+ * "Use Photo" is blocked — a tiny epsilon for floating-point slack, not a
+ * real allowance. getCropOverflowFraction is exact at any rotation angle, so
+ * this threshold applies uniformly regardless of how `rotation` was reached.
+ */
+export const ALIGN_MAX_OVERFLOW_FRACTION = 0.005;
+
+/**
+ * Below this source-pixel width backing the crop rect, upsampling to
+ * ALIGN_OUTPUT_WIDTH is heavy enough to warrant a soft "may look blurry"
+ * advisory. Not a hard block — upsampling here is correct, not a bug: once
+ * capture geometry is normalized, physical area per output pixel is constant
+ * by construction regardless of zoom, so a heavily-zoomed crop SHOULD be
+ * upsampled to keep its pooling weight proportional to physical area. Only
+ * sharpness suffers.
+ */
+export const ALIGN_BLUR_WARN_SOURCE_WIDTH = 600;
 
 // ── IDW (Inverse Distance Weighting) Parameters ─────────────
 /**

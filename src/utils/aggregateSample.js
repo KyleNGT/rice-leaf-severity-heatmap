@@ -27,11 +27,23 @@
  *      pooled winner is the disease class holding the most leaf pixels
  *      across the plant.
  *
- * Caveat worth carrying into the writeup: the weights are photographic
- * pixels, not physical leaf area. `_downscale` caps the long edge but does
- * not normalise leaf size, so a close-up still counts for more than a
- * distant shot of the same tissue. This is strictly better than an
- * unweighted mean; it is not a physical-area weighting.
+ * Every photo, camera or gallery, is now forced through a fixed alignment
+ * crop before it ever reaches analysis (ImageAlignmentModal → cropToStencil.js)
+ * — see ALIGN_OUTPUT_WIDTH/HEIGHT in constants.js. That normalizes framing
+ * distance, which used to be the dominant source of
+ * per-photo scale variance: every photo now shares one output resolution,
+ * and that resolution sits under backend/inference.py's DEFAULT_MAX_SIDE, so
+ * `_downscale` is a no-op for all of them — a close-up and a wide shot no
+ * longer differ 4× in effective scale before a single pixel is counted.
+ *
+ * Caveat still worth carrying into the writeup, narrower than before: the
+ * weights are now framing-consistent, not biologically calibrated. There is
+ * no scale reference in frame (no ruler, no known-size marker), so the
+ * mapping from pixels to mm² is unknown — it's consistent across photos, not
+ * calibrated to a physical unit. The remaining assumption is that rice leaf
+ * blade width is roughly constant within a variety (the stencil fixes
+ * on-screen width, not measured width) and that the farmer aligned the leaf
+ * to the stencil by eye; alignment error is unquantified.
  *
  * Pure module — no React, no DOM. Runnable directly under `node`.
  */

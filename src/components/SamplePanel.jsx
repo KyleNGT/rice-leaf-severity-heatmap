@@ -20,9 +20,18 @@ import { MAX_IMAGES_PER_SAMPLE } from '../constants/constants';
  * Two states:
  *   - No draft: hint + Camera/Gallery buttons.
  *   - Draft active: a scrolling strip of photo tiles (each with
- *     its own severity, warning, retry and remove), the
- *     Camera/Gallery buttons to add more, the pooled plant-level
- *     result, a side-by-side Lat/Long row, and "Save Plant".
+ *     its own severity, warning, retry and remove), a labeled
+ *     "+ Add another leaf photo" Camera/Gallery pair (styled as a
+ *     distinct "add" affordance so it isn't mistaken for starting
+ *     a new plant), the pooled plant-level result, a side-by-side
+ *     Lat/Long row, and a Discard Plant / Save Plant action row
+ *     (destructive red vs. primary emerald).
+ *
+ * Camera/Gallery taps open their file input directly, but that's not the
+ * end of the road: App.jsx queues whatever's picked for ImageAlignmentModal
+ * (rendered there, not here) — the mandatory crop step every photo passes
+ * through, against one static framing rectangle, before it becomes a draft
+ * image. See useAlignmentQueue.js.
  *
  * `bare`: when true, skip the outer .upload-panel/.upload-card
  * wrapper and the title — the parent (SampleSheet) supplies both.
@@ -47,6 +56,7 @@ export default function SamplePanel({
   const cameraRef = useRef(null);
   const uploadRef = useRef(null);
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   const sourcesDisabled = disabled || isMaxed || isImagesMaxed;
   const images = draft?.images ?? [];
@@ -66,14 +76,17 @@ export default function SamplePanel({
     manual: 'Manual',
   }[draft?.locationSource];
 
-  const sourceButtons = (
-    <div className="upload-sources">
+  const sourceButtons = (variant) => (
+    <div className={`upload-sources${variant === 'add' ? ' upload-sources--add' : ''}`}>
       <button
         type="button"
         className="upload-source-btn"
         onClick={() => cameraRef.current?.click()}
         disabled={sourcesDisabled}
       >
+        {variant !== 'add' && (
+          <span className="upload-source-btn-icon" aria-hidden="true">📷</span>
+        )}
         <span>Camera</span>
       </button>
       <button
@@ -82,6 +95,9 @@ export default function SamplePanel({
         onClick={() => uploadRef.current?.click()}
         disabled={sourcesDisabled}
       >
+        {variant !== 'add' && (
+          <span className="upload-source-btn-icon" aria-hidden="true">🖼️</span>
+        )}
         <span>Gallery</span>
       </button>
     </div>
@@ -247,7 +263,7 @@ export default function SamplePanel({
           <p className="upload-hint">
             Take photos of several leaves from one plant. A long leaf may need more than one photo.
           </p>
-          {sourceButtons}
+          {sourceButtons()}
         </>
       )}
 
@@ -257,9 +273,6 @@ export default function SamplePanel({
             <span className="upload-label">
               Photos of this plant ({images.length}/{MAX_IMAGES_PER_SAMPLE})
             </span>
-            <button type="button" className="upload-mini-btn" onClick={onDiscardDraft}>
-              Discard plant
-            </button>
           </div>
 
           <ul className="upload-photo-strip">{images.map(photoTile)}</ul>
@@ -269,7 +282,10 @@ export default function SamplePanel({
               Photo limit reached for this plant. Save it and start the next one.
             </p>
           ) : (
-            sourceButtons
+            <div className="upload-add-leaf">
+              <span className="upload-add-leaf-label">+ Add another leaf photo</span>
+              {sourceButtons('add')}
+            </div>
           )}
 
           {plantSummary}
@@ -318,14 +334,23 @@ export default function SamplePanel({
 
           {coordWarning && <p className="upload-warning">⚠ {coordWarning}</p>}
 
-          <button
-            type="button"
-            className="upload-btn-add"
-            disabled={!canAddSample}
-            onClick={onAddSample}
-          >
-            + Save Plant
-          </button>
+          <div className="upload-actions-row">
+            <button
+              type="button"
+              className="upload-btn-discard"
+              onClick={() => setConfirmingDiscard(true)}
+            >
+              Discard Plant
+            </button>
+            <button
+              type="button"
+              className="upload-btn-add"
+              disabled={!canAddSample}
+              onClick={onAddSample}
+            >
+              + Save Plant
+            </button>
+          </div>
         </>
       )}
     </>
@@ -345,11 +370,51 @@ export default function SamplePanel({
     </div>
   );
 
+  const discardConfirm = confirmingDiscard && draft && (
+    <div className="upload-confirm-overlay" onClick={() => setConfirmingDiscard(false)}>
+      <div
+        className="upload-confirm-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="discard-confirm-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <p id="discard-confirm-title" className="upload-confirm-title">
+          Discard this plant?
+        </p>
+        <p className="upload-confirm-body">
+          {images.length} {images.length === 1 ? 'photo' : 'photos'} and this plant&apos;s
+          location will be lost. This can&apos;t be undone.
+        </p>
+        <div className="upload-confirm-actions">
+          <button
+            type="button"
+            className="upload-mini-btn"
+            onClick={() => setConfirmingDiscard(false)}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="upload-btn-discard-confirm"
+            onClick={() => {
+              setConfirmingDiscard(false);
+              onDiscardDraft();
+            }}
+          >
+            Discard
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   if (bare) {
     return (
       <>
         {content}
         {lightbox}
+        {discardConfirm}
       </>
     );
   }
@@ -361,6 +426,7 @@ export default function SamplePanel({
         {content}
       </div>
       {lightbox}
+      {discardConfirm}
     </div>
   );
 }
