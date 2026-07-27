@@ -1306,6 +1306,32 @@ html, body, #root {
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Static blade-width guide: a dashed vertical rail centered in the framing
+   rectangle, full height, width set by --align-guide-width-fraction (from
+   ALIGN_GUIDE_WIDTH_FRACTION, applied as an inline custom property on
+   .align-stage in ImageAlignmentModal.jsx so the CSS and JS/export math share
+   one source of truth). PURELY VISUAL — this is guidance, not a sensor; see
+   the ALIGN_GUIDE_WIDTH_FRACTION comment in constants.js.
+   Relies on two properties of the library's own CropArea rule (react-easy-
+   crop.css) that make this safe to layer on: `overflow: hidden` clips the
+   guide flush to the frame's own edges (so it reads as exactly full-height,
+   never bleeding past the white border), and the dimming scrim is a
+   `box-shadow` keyed off `color`, which this pseudo-element never touches. */
+.align-stage .align-frame::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: calc(var(--align-guide-width-fraction, 0.25) * 100%);
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  border-left: 2px dashed rgba(255, 255, 255, 0.85);
+  border-right: 2px dashed rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+
 .align-hint {
   flex-shrink: 0;
   margin: 0;
