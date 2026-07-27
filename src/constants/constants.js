@@ -60,13 +60,19 @@ export const MAX_IMAGES_PER_SAMPLE = 10;
  * a larger box, so background survived regardless of how tightly the user
  * filled the outline). Now, how much background survives is entirely up to
  * how loosely the user centers their leaf in the box, per the on-screen
- * instruction text. If well-aligned real photos start landing close to
- * MAX_LEAF_FRAME_FRACTION (0.97), that is the first constant to revisit —
- * the safety margin this guard used to get for free is now just a soft
- * expectation, not a structural guarantee. The probe table above was
- * measured on *uncropped* images and is no longer the input distribution
- * this guard actually sees; re-measure it on real cropped field captures
- * before quoting either bound.
+ * instruction text.
+ *
+ * The frame now also carries a static blade-width guide (see
+ * ALIGN_GUIDE_WIDTH_FRACTION below) whose whole point is to get the farmer to
+ * fill only ~25% of the frame's width with leaf. A photo that actually follows
+ * the guide therefore has a STRUCTURAL leaf_frame_fraction ceiling around
+ * 0.25, which makes today's MAX_LEAF_FRAME_FRACTION (0.97) very loose relative
+ * to a compliant photo — but nothing here retunes it, since the guide is
+ * advisory only (no sensor checks compliance) and 0.97 must stay wide enough
+ * to still pass an uncompliant-but-real photo. 0.25 is the number to compare
+ * against once real cropped field captures are measured; the probe table
+ * above was taken on *uncropped, unguided* images and describes neither this
+ * guard's current input distribution nor the post-guide one.
  */
 export const MIN_LEAF_FRAME_FRACTION = 0.02;
 export const MAX_LEAF_FRAME_FRACTION = 0.97;
@@ -85,36 +91,54 @@ export const MIN_LEAF_MASK_CONFIDENCE = 0.7;
  */
 
 /**
- * Fixed alignment crop output — a narrow portrait rectangle (aspect
- * literally ALIGN_FRAME_WIDTH_FRACTION / ALIGN_FRAME_HEIGHT_FRACTION below,
- * i.e. 0.3 / 0.8 = 0.375), matching a single rice leaf's own long-and-thin
- * proportions more tightly than the previous 3:4 frame did. 1600 on the long
- * edge sits safely under backend/inference.py's DEFAULT_MAX_SIDE (2048), so
- * `_downscale` there returns scale = 1.0 for EVERY photo, not just usually.
- * That turns leaf_frame_fraction's denominator (work_w × work_h) into the
- * same constant for every photo, with zero resampling variance between them.
- * Today a 4032×3024 photo and a 1600×1200 photo differ 4× in effective
- * scale, and therefore in pixel count, for identical tissue; this one change
- * is what removes that variance.
+ * Fixed alignment crop output — a SQUARE matching the SegFormer preprocessor's
+ * own input size (see segfomer_model/*\/preprocessor_config.json, both phases:
+ * do_resize: true, size: {512, 512}). A non-square crop gets resized
+ * anisotropically by that preprocessor — the previous 600×1600 rectangle was
+ * squashed 2.67× horizontally on its way into the model, fattening every leaf.
+ * Square makes that resize isotropic. 1024 sits safely under
+ * backend/inference.py's DEFAULT_MAX_SIDE (2048), so `_downscale` there
+ * returns scale = 1.0 for EVERY photo, not just usually. That turns
+ * leaf_frame_fraction's denominator (work_w × work_h) into the same constant
+ * for every photo, with zero resampling variance between them. Today a
+ * 4032×3024 photo and a 1600×1200 photo differ 4× in effective scale, and
+ * therefore in pixel count, for identical tissue; this one change is what
+ * removes that variance. (1024, not 512, so Phase 2's leaf-bbox crop still has
+ * real detail to upsample from — see ALIGN_GUIDE_WIDTH_FRACTION below for the
+ * complementary fix to *magnification*.)
  */
-export const ALIGN_OUTPUT_WIDTH = 600;
-export const ALIGN_OUTPUT_HEIGHT = 1600;
-export const ALIGN_ASPECT = ALIGN_OUTPUT_WIDTH / ALIGN_OUTPUT_HEIGHT;
+export const ALIGN_OUTPUT_WIDTH = 1024;
+export const ALIGN_OUTPUT_HEIGHT = 1024;
+export const ALIGN_ASPECT = ALIGN_OUTPUT_WIDTH / ALIGN_OUTPUT_HEIGHT; // 1
 
 /**
- * On-screen layout ONLY — how large the visible framing rectangle is drawn
- * relative to the alignment stage's own measured size (via a ResizeObserver
- * in ImageAlignmentModal.jsx), leaving visible dimmed margin on every side
- * rather than the rectangle filling its container edge-to-edge. This is
- * deliberately separate from ALIGN_ASPECT/ALIGN_OUTPUT_WIDTH/HEIGHT above,
- * which govern the actual EXPORTED crop and never change with device or
- * viewport size — only the on-screen pixel size of the rectangle varies by
- * device, never what gets cropped out of the source photo. Their ratio
- * (0.3 / 0.8) must equal ALIGN_ASPECT, or the visible box and the exported
- * crop would disagree in shape.
+ * Largest fraction of the alignment stage the framing rectangle may occupy,
+ * on EITHER axis — the box is then fit as the largest ALIGN_ASPECT rectangle
+ * that stays within that inset (see the fit in ImageAlignmentModal.jsx), so
+ * its on-screen aspect always equals ALIGN_ASPECT regardless of the stage's
+ * own aspect. Do not go back to separate width/height fractions: that's
+ * exactly what let the on-screen box and the exported crop disagree in shape
+ * before (a tall stage produced a visibly non-square box that still exported
+ * as a square, silently distorting the image). One inset fraction plus an
+ * aspect-preserving fit makes that class of bug unrepresentable.
  */
-export const ALIGN_FRAME_WIDTH_FRACTION = 0.3;
-export const ALIGN_FRAME_HEIGHT_FRACTION = 0.8;
+export const ALIGN_STAGE_INSET_FRACTION = 0.92;
+
+/**
+ * Width of the static blade-width guide drawn inside the framing rectangle, as
+ * a fraction of the frame's own width; it spans the full frame height. This is
+ * the fix for scale (as opposed to ALIGN_OUTPUT_WIDTH/HEIGHT, which fixed
+ * output *resolution* but not *magnification*): two photos of the same blade
+ * taken from different distances still land at different pixel scales unless
+ * the farmer is given something physical to align against. Asking them to fit
+ * the leaf's width to this rail — not past it — targets a constant
+ * pixels-per-blade-width across every photo, which is what
+ * aggregateSample.js's Σ leaf_pixels pooling actually needs to be comparable
+ * plant-to-plant. PURELY VISUAL — nothing measures or enforces whether a given
+ * photo complies; see the leaf-plausibility-guard comment above for the
+ * consequence of that.
+ */
+export const ALIGN_GUIDE_WIDTH_FRACTION = 0.25;
 
 /**
  * JPEG encode quality for the cropped output. This blob is the measurement
@@ -166,9 +190,10 @@ export const ALIGN_MAX_OVERFLOW_FRACTION = 0.005;
  * capture geometry is normalized, physical area per output pixel is constant
  * by construction regardless of zoom, so a heavily-zoomed crop SHOULD be
  * upsampled to keep its pooling weight proportional to physical area. Only
- * sharpness suffers.
+ * sharpness suffers. Kept equal to ALIGN_OUTPUT_WIDTH by definition — the
+ * warning is "we are upsampling at all", not a distinct tuned threshold.
  */
-export const ALIGN_BLUR_WARN_SOURCE_WIDTH = 600;
+export const ALIGN_BLUR_WARN_SOURCE_WIDTH = ALIGN_OUTPUT_WIDTH;
 
 // ── IDW (Inverse Distance Weighting) Parameters ─────────────
 /**

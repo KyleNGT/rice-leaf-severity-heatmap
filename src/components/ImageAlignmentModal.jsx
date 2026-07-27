@@ -3,8 +3,8 @@ import Cropper from 'react-easy-crop';
 import { cropAlignedImage, flipImage, getCropOverflowFraction } from '../utils/cropToStencil';
 import {
   ALIGN_ASPECT,
-  ALIGN_FRAME_WIDTH_FRACTION,
-  ALIGN_FRAME_HEIGHT_FRACTION,
+  ALIGN_STAGE_INSET_FRACTION,
+  ALIGN_GUIDE_WIDTH_FRACTION,
   ALIGN_MIN_ZOOM,
   ALIGN_MAX_ZOOM,
   ALIGN_ROTATION_STEP_DEG,
@@ -51,7 +51,11 @@ let cropFileSeq = 0;
  * everything outside that element via its own default CSS, and sizing it
  * with an explicit `cropSize` (measured off the stage via ResizeObserver,
  * below) is what leaves visible margin on all four sides instead of the box
- * filling its container edge-to-edge.
+ * filling its container edge-to-edge. Inside that rectangle, a second static
+ * guide (`.align-frame::before`, driven by the `--align-guide-width-fraction`
+ * CSS var set below) marks the blade width a well-framed leaf should fill —
+ * see ALIGN_GUIDE_WIDTH_FRACTION in constants.js for why. It is drawn, not
+ * measured: nothing here checks whether the leaf actually fits it.
  *
  * No re-align action exists once a photo is committed to the draft — the
  * original File isn't retained past a successful crop (ten originals pinned
@@ -99,13 +103,18 @@ export default function ImageAlignmentModal({
     setError('');
   }, [imageUrl]);
 
-  // The visible framing rectangle is a fixed fraction of the stage's own
-  // measured size (ALIGN_FRAME_WIDTH/HEIGHT_FRACTION), not the whole stage —
-  // that's what leaves dimmed margin on every side rather than the box
-  // touching the stage's edges. Only the ON-SCREEN pixel size varies by
-  // device; the exported crop stays ALIGN_OUTPUT_WIDTH × ALIGN_OUTPUT_HEIGHT
-  // regardless, since cropAlignedImage resamples from croppedAreaPixels
-  // (natural source-image coordinates), never from this layout measurement.
+  // The visible framing rectangle is fit as the largest ALIGN_ASPECT rect
+  // that stays within ALIGN_STAGE_INSET_FRACTION of the stage's own measured
+  // size on EITHER axis — that's what leaves dimmed margin on every side
+  // rather than the box touching the stage's edges, while guaranteeing the
+  // on-screen box is always the same shape as the exported crop regardless of
+  // the stage's own aspect (a tall stage used to produce a visibly non-square
+  // box that still exported as a square, silently distorting the image — see
+  // ALIGN_STAGE_INSET_FRACTION in constants.js). Only the ON-SCREEN pixel size
+  // varies by device; the exported crop stays
+  // ALIGN_OUTPUT_WIDTH × ALIGN_OUTPUT_HEIGHT regardless, since
+  // cropAlignedImage resamples from croppedAreaPixels (natural source-image
+  // coordinates), never from this layout measurement.
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === 'undefined') return undefined;
@@ -113,10 +122,15 @@ export default function ImageAlignmentModal({
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect || rect.width === 0 || rect.height === 0) return;
-      setCropSize({
-        width: rect.width * ALIGN_FRAME_WIDTH_FRACTION,
-        height: rect.height * ALIGN_FRAME_HEIGHT_FRACTION,
-      });
+      const maxWidth = rect.width * ALIGN_STAGE_INSET_FRACTION;
+      const maxHeight = rect.height * ALIGN_STAGE_INSET_FRACTION;
+      let width = maxWidth;
+      let height = width / ALIGN_ASPECT;
+      if (height > maxHeight) {
+        height = maxHeight;
+        width = height * ALIGN_ASPECT;
+      }
+      setCropSize({ width: Math.round(width), height: Math.round(height) });
     });
     observer.observe(stage);
     return () => observer.disconnect();
@@ -216,7 +230,11 @@ export default function ImageAlignmentModal({
         )}
       </div>
 
-      <div className="align-stage" ref={stageRef}>
+      <div
+        className="align-stage"
+        ref={stageRef}
+        style={{ '--align-guide-width-fraction': ALIGN_GUIDE_WIDTH_FRACTION }}
+      >
         <Cropper
           image={workingUrl}
           crop={crop}
@@ -238,7 +256,8 @@ export default function ImageAlignmentModal({
       </div>
 
       <p className="align-hint">
-        Keep the camera at a consistent distance and center the leaf within the box.
+        Fit the leaf so its widest part just touches the inner guide without crossing it, and let
+        the blade run from top to bottom.
       </p>
 
       <div className="align-controls">
