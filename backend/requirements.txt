@@ -1,0 +1,9 @@
+torch>=2.3
+torchvision>=0.18
+transformers>=5.14.1
+safetensors>=0.4
+numpy>=1.26,<2
+Pillow>=10
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9

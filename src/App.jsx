@@ -12,8 +12,34 @@ import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
 import { analyzePlantImage } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
-import { STEPS, HEATMAP_DEFAULT_OPACITY, MAX_SAMPLES } from './constants/constants';
+import { summarizePlant, isUsableImage } from './utils/aggregateSample';
+import { makeThumbnails } from './utils/makeThumbnail';
+import {
+  STEPS,
+  HEATMAP_DEFAULT_OPACITY,
+  MAX_SAMPLES,
+  MAX_IMAGES_PER_SAMPLE,
+} from './constants/constants';
 import './App.css';
+
+let imageSeq = 0;
+
+/** A freshly-picked photo, before its analysis comes back. */
+function newDraftImage(file, source) {
+  imageSeq += 1;
+  return {
+    // Stable id — this, not File identity, is what reconciles async results
+    // back onto the right photo now that several are in flight at once.
+    id: `img-${Date.now()}-${imageSeq}`,
+    file, // retained so a failed photo can be retried without re-picking it
+    thumbnail: URL.createObjectURL(file),
+    source,
+    analyzing: true,
+    result: null,
+    error: '',
+    dismissedWarning: false,
+  };
+}
 
 /**
  * ============================================================
@@ -38,14 +64,27 @@ export default function App() {
   const [loadingProgress, setLoadingProgress] = useState(null);
 
   // ── Draft Sample State ──────────────────────────────────────
-  // { file, thumbnail, lat, lng, analyzing, severity, diseaseDetected,
-  //   diseaseName, confidence, locating, locationSource, locationError,
-  //   capturedAt } — an in-progress sample being edited in the
-  // SamplePanel card before the user commits it with "Add Sample".
-  // locationSource is 'gps' | 'exif' | 'manual' | null, recording how
-  // the coordinates were obtained (live camera GPS, photo EXIF, or
-  // hand-typed) — see handleImageSelected below.
+  // An in-progress PLANT being staged in the SamplePanel before the user
+  // commits it with "Save Plant". A node is one rice plant, not one photo:
+  // a rice leaf is long enough to need several frames, and field practice
+  // samples several leaves per plant.
+  //
+  //   { images: [newDraftImage(...)],
+  //     lat, lng, locating, locationSource, locationError, capturedAt }
+  //
+  // Location is plant-level, resolved once (see handleImagesSelected) so a
+  // later photo can't shift a pin the farmer is standing at. locationSource
+  // is 'gps' | 'exif' | 'manual' | null.
+  //
+  // Per-photo failures live on the image, not here: a failed photo is
+  // excluded from the pooled severity rather than blocking the plant. It
+  // contributes zero to BOTH sides of the PDLA ratio, so the invariant that
+  // a failed analysis can never inject a fabricated severity into the IDW
+  // grid still holds — see isUsableImage in utils/aggregateSample.js.
   const [draftSample, setDraftSample] = useState(null);
+
+  // Guards the await inside handleAddSample against a double-tap.
+  const committingRef = useRef(false);
 
   // ── Map Fullscreen State ────────────────────────────────────
   const [mapFullscreen, setMapFullscreen] = useState(false);
@@ -87,75 +126,154 @@ export default function App() {
     }
   }, [boundary]);
 
-  // ── Image Processing Pipeline ──────────────────────────────
-  // Selecting a photo replaces any uncommitted draft with a new one,
-  // then the mock ML analysis merges in once it resolves. The draft
-  // is only added to `samples` when the user taps "Add Sample".
+  // ── Draft Mutation ──────────────────────────────────────────
+  // Every write to the draft goes through applyDraft, and draftRef is the
+  // synchronous source of truth for reading it back.
   //
-  // Location handling branches by `source`:
-  //   - 'camera' (live capture): NEVER read EXIF — iOS WebKit strips
-  //     GPS from camera-captured photos anyway, so instead we fetch a
-  //     live fix via navigator.geolocation (useDeviceLocation), shown
-  //     with a "Getting your location…" spinner while it resolves.
-  //   - 'gallery' (deferred upload): NEVER call navigator.geolocation
-  //     — the device's current position has no relation to where a
-  //     previously-taken photo was shot (e.g. uploading from the
-  //     office later). Best-effort EXIF GPS instead; if absent, the
-  //     user enters coordinates manually.
-  // Both paths fall back to the manual lat/lng fields on failure.
-  const handleImageSelected = useCallback(
-    async (file, source) => {
-      const thumbnail = URL.createObjectURL(file);
-      const isCamera = source === 'camera';
+  // Two reasons this isn't just setDraftSample(prev => ...):
+  //   - Several analyses are in flight at once, each resolving in its own
+  //     callback. A functional updater only sees `prev` when React chooses
+  //     to invoke it, so the calling code cannot act on the result — and
+  //     handleImagesSelected has to know, right now, which photos it
+  //     accepted and whether it owes a geolocation fix.
+  //   - StrictMode double-invokes updaters in dev. Keeping side effects
+  //     (revoking object URLs) out of the updater and in plain code makes
+  //     that a non-issue instead of a subtle one.
+  const draftRef = useRef(null);
 
-      const gps = isCamera ? { hasGps: false } : await extractGps(file);
+  const applyDraft = useCallback((updater) => {
+    const next = typeof updater === 'function' ? updater(draftRef.current) : updater;
+    draftRef.current = next;
+    setDraftSample(next);
+    return next;
+  }, []);
 
-      setDraftSample({
-        file,
-        thumbnail,
-        lat: gps.hasGps ? gps.lat.toFixed(6) : '',
-        lng: gps.hasGps ? gps.lng.toFixed(6) : '',
-        analyzing: true,
-        severity: null,
-        diseaseDetected: null,
-        diseaseName: null,
-        confidence: null,
-        locating: isCamera,
-        locationSource: gps.hasGps ? 'exif' : null,
-        locationError: '',
-        capturedAt: null,
+  // Patch one photo by id. Photos removed mid-flight simply aren't found,
+  // which is how a late analysis result for a discarded photo gets dropped.
+  const updateDraftImage = useCallback(
+    (imageId, patch) => {
+      applyDraft((prev) => {
+        if (!prev) return prev;
+        const index = prev.images.findIndex((image) => image.id === imageId);
+        if (index === -1) return prev;
+
+        const images = [...prev.images];
+        images[index] = { ...images[index], ...patch };
+        return { ...prev, images };
       });
+    },
+    [applyDraft]
+  );
+
+  const runAnalysis = useCallback(
+    (imageId, file) => {
+      updateDraftImage(imageId, { analyzing: true, error: '', result: null });
 
       analyzePlantImage(file)
         .then((result) => {
-          setDraftSample((prev) =>
-            // Bail if the draft was replaced/cleared while analyzing
-            prev && prev.file === file
-              ? {
-                  ...prev,
-                  analyzing: false,
-                  severity: result.severity,
-                  diseaseDetected: result.diseaseDetected,
-                  diseaseName: result.diseaseName,
-                  confidence: result.confidence,
-                }
-              : prev
-          );
+          // A 200 OK with status: 'no_leaf_detected' is not a usable photo —
+          // treat it like a failure rather than recording a false 0%, which
+          // would drag the heatmap toward "healthy" over a possible hotspot.
+          // The result is still stored so the UI can say what went wrong.
+          if (result.status === 'no_leaf_detected') {
+            updateDraftImage(imageId, {
+              analyzing: false,
+              result,
+              error: 'No leaf detected in this photo. Try a closer, clearer shot.',
+            });
+            return;
+          }
+
+          updateDraftImage(imageId, { analyzing: false, result, error: '' });
         })
         .catch((err) => {
           console.error('Sample analysis failed:', err);
-          setDraftSample((prev) =>
-            prev && prev.file === file ? { ...prev, analyzing: false } : prev
-          );
+          updateDraftImage(imageId, {
+            analyzing: false,
+            result: null,
+            error: err.message || 'Analysis failed.',
+          });
         });
+    },
+    [updateDraftImage]
+  );
 
-      if (isCamera) {
+  // ── Image Processing Pipeline ──────────────────────────────
+  // Photos APPEND to the current plant draft (creating one if there isn't
+  // yet), each analyzed independently. The plant only enters `samples` when
+  // the user taps "Save Plant"; canAddSample requires at least one usable
+  // photo and a non-null pooled severity, so a plant whose photos all failed
+  // can never reach the interpolation grid.
+  //
+  // Location is resolved ONCE PER PLANT, not per photo — the farmer walks
+  // around a single plant taking several shots, and re-fixing GPS each time
+  // would jitter the pin. It branches by `source`:
+  //   - 'camera' (live capture): NEVER read EXIF — iOS WebKit strips GPS
+  //     from camera-captured photos anyway — so fetch a live fix via
+  //     navigator.geolocation (useDeviceLocation) instead.
+  //   - 'gallery' (deferred upload): NEVER call navigator.geolocation — the
+  //     device's current position has no relation to where a previously-taken
+  //     photo was shot (e.g. uploading from the office later). Best-effort
+  //     EXIF GPS instead.
+  // Either way, coordinates already set are never overwritten, and a manual
+  // edit is never overridden. Both paths fall back to the lat/lng fields.
+  const handleImagesSelected = useCallback(
+    async (fileList, source) => {
+      const files = Array.from(fileList ?? []);
+      if (files.length === 0) return;
+
+      const isCamera = source === 'camera';
+      const candidates = files.map((file) => newDraftImage(file, source));
+
+      // Decided synchronously against the live draft, so the code below
+      // knows exactly which photos it took on.
+      const prev = draftRef.current;
+      const existing = prev?.images ?? [];
+      const room = Math.max(0, MAX_IMAGES_PER_SAMPLE - existing.length);
+      const accepted = candidates.slice(0, room);
+
+      // Photos beyond MAX_IMAGES_PER_SAMPLE never enter state — release
+      // their blobs rather than leaking them for the session.
+      for (const candidate of candidates.slice(accepted.length)) {
+        URL.revokeObjectURL(candidate.thumbnail);
+      }
+      if (accepted.length === 0) return;
+
+      const shouldLocate =
+        isCamera &&
+        !prev?.locating &&
+        prev?.locationSource !== 'manual' &&
+        !(prev?.lat || prev?.lng);
+
+      applyDraft(
+        prev
+          ? {
+              ...prev,
+              images: [...existing, ...accepted],
+              locating: prev.locating || shouldLocate,
+            }
+          : {
+              images: accepted,
+              lat: '',
+              lng: '',
+              locating: shouldLocate,
+              locationSource: null,
+              locationError: '',
+              capturedAt: null,
+            }
+      );
+
+      for (const candidate of accepted) {
+        runAnalysis(candidate.id, candidate.file);
+      }
+
+      if (shouldLocate) {
         try {
           const pos = await getLocation();
-          setDraftSample((prev) =>
-            prev && prev.file === file
+          applyDraft((current) =>
+            current
               ? {
-                  ...prev,
+                  ...current,
                   lat: pos.lat.toFixed(6),
                   lng: pos.lng.toFixed(6),
                   capturedAt: pos.timestamp,
@@ -163,28 +281,87 @@ export default function App() {
                   locating: false,
                   locationError: '',
                 }
-              : prev
+              : current
           );
         } catch (err) {
-          setDraftSample((prev) =>
-            prev && prev.file === file
-              ? { ...prev, locating: false, locationError: err.message }
-              : prev
+          applyDraft((current) =>
+            current ? { ...current, locating: false, locationError: err.message } : current
           );
         }
+        return;
+      }
+
+      if (!isCamera) {
+        const gps = await extractGps(files[0]);
+        if (!gps.hasGps) return;
+
+        applyDraft((current) => {
+          if (!current) return current;
+          // Fill only a blank plant. A coordinate already set — by GPS, by an
+          // earlier photo's EXIF, or by hand — stays put.
+          if (current.locationSource === 'manual' || current.lat || current.lng) return current;
+
+          return {
+            ...current,
+            lat: gps.lat.toFixed(6),
+            lng: gps.lng.toFixed(6),
+            locationSource: 'exif',
+            locationError: '',
+          };
+        });
       }
     },
-    [extractGps, getLocation]
+    [applyDraft, extractGps, getLocation, runAnalysis]
   );
+
+  // ── Per-Photo Actions ───────────────────────────────────────
+  const handleRemoveDraftImage = useCallback(
+    (imageId) => {
+      const target = draftRef.current?.images.find((image) => image.id === imageId);
+      if (!target) return;
+
+      URL.revokeObjectURL(target.thumbnail);
+
+      applyDraft((prev) => {
+        const images = prev.images.filter((image) => image.id !== imageId);
+        // Removing the last photo discards the plant entirely — an empty
+        // draft has no meaning and would strand the coordinate fields.
+        return images.length === 0 ? null : { ...prev, images };
+      });
+    },
+    [applyDraft]
+  );
+
+  const handleRetryImage = useCallback(
+    (imageId) => {
+      const image = draftRef.current?.images.find((candidate) => candidate.id === imageId);
+      // The File was retained at pick time, so a retry costs no re-selection.
+      if (image) runAnalysis(imageId, image.file);
+    },
+    [runAnalysis]
+  );
+
+  const handleDismissImageWarning = useCallback(
+    (imageId) => updateDraftImage(imageId, { dismissedWarning: true }),
+    [updateDraftImage]
+  );
+
+  const handleDiscardDraft = useCallback(() => {
+    draftRef.current?.images.forEach((image) => URL.revokeObjectURL(image.thumbnail));
+    applyDraft(null);
+  }, [applyDraft]);
 
   // ── Draft Coordinate Editing ────────────────────────────────
   // A manual edit always wins as the provenance of record — even if
   // GPS or EXIF had prefilled the field, the user is now the source.
-  const handleDraftCoordChange = useCallback((field, value) => {
-    setDraftSample((prev) =>
-      prev ? { ...prev, [field]: value, locationSource: 'manual', locationError: '' } : prev
-    );
-  }, []);
+  const handleDraftCoordChange = useCallback(
+    (field, value) => {
+      applyDraft((prev) =>
+        prev ? { ...prev, [field]: value, locationSource: 'manual', locationError: '' } : prev
+      );
+    },
+    [applyDraft]
+  );
 
   // ── Draft Validity (parsed coords + inside-boundary check) ──
   const draftValidity = useMemo(() => {
@@ -208,27 +385,84 @@ export default function App() {
     return { hasCoords, isInside, isValid: isInside };
   }, [draftSample, boundary]);
 
+  // ── Plant-Level Summary ─────────────────────────────────────
+  // Pooled PDLA over every usable photo — see utils/aggregateSample.js for
+  // why this is a ratio of summed pixel counts and not a mean of the
+  // per-photo percentages.
+  const draftSummary = useMemo(
+    () => (draftSample ? summarizePlant(draftSample.images) : null),
+    [draftSample]
+  );
+
   // ── Commit Draft Sample ──────────────────────────────────────
-  const handleAddSample = useCallback(() => {
-    if (!draftSample || draftSample.analyzing || !draftValidity.isValid) return;
+  const handleAddSample = useCallback(async () => {
+    // Mirrors canAddSample, which gates the button. Repeated here because
+    // this handler, not the disabled attribute, is what actually protects
+    // the invariant that only a measured plant reaches the grid.
+    if (!draftSample || !draftSummary || !draftValidity.isValid) return;
+    if (draftSample.locating) return;
+    if (draftSummary.analyzingCount > 0 || draftSummary.usableCount === 0) return;
+    if (draftSummary.severity === null) return;
     if (samples.length >= MAX_SAMPLES) return;
+    // makeThumbnails awaits, leaving a window for a second tap.
+    if (committingRef.current) return;
+    committingRef.current = true;
 
-    const newSample = {
-      id: `sample-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      lat: parseFloat(draftSample.lat),
-      lng: parseFloat(draftSample.lng),
-      severity: draftSample.severity,
-      diseaseDetected: draftSample.diseaseDetected,
-      diseaseName: draftSample.diseaseName,
-      confidence: draftSample.confidence,
-      thumbnail: draftSample.thumbnail,
-      locationSource: draftSample.locationSource,
-      capturedAt: draftSample.capturedAt ?? null,
-    };
+    const draft = draftSample;
 
-    setSamples((prev) => [...prev, newSample]);
-    setDraftSample(null);
-  }, [draftSample, draftValidity, samples.length]);
+    try {
+      const thumbs = await makeThumbnails(draft.images);
+
+      const newSample = {
+        id: `sample-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        lat: parseFloat(draft.lat),
+        lng: parseFloat(draft.lng),
+        // lat/lng/severity stay flat numbers on purpose: idwInterpolation.js
+        // projects exactly these three fields into the worker, so the whole
+        // interpolation path is untouched by the move to multi-image plants.
+        severity: draftSummary.severity,
+        diseaseDetected: draftSummary.diseaseDetected,
+        diseaseName: draftSummary.diseaseName,
+        // No plant-level confidence is claimed. Each photo's confidence is a
+        // mean posterior conditioned on THAT photo's winning class, which may
+        // differ from the plant's, so combining them yields a number with no
+        // referent. The per-photo range is kept for display instead.
+        confidence: null,
+        confidenceRange: draftSummary.confidenceRange,
+        thumbnail: thumbs[0].thumbnail,
+        images: draft.images.map((image, index) => ({
+          id: image.id,
+          thumbnail: thumbs[index].thumbnail,
+          severity: image.result?.status === 'ok' ? image.result.severity : null,
+          diseaseName: image.result?.status === 'ok' ? image.result.diseaseName : null,
+          confidence: image.result?.confidence ?? null,
+          usable: isUsableImage(image),
+        })),
+        imageCount: draftSummary.totalCount,
+        usableImageCount: draftSummary.usableCount,
+        // Retained for the write-up: the pooled counts behind the severity,
+        // and how much the individual photos disagreed.
+        leafPixels: draftSummary.leafPixels,
+        diseasePixels: draftSummary.diseasePixels,
+        classPixels: draftSummary.classPixels,
+        pdlaSpread: draftSummary.pdlaSpread,
+        locationSource: draft.locationSource,
+        capturedAt: draft.capturedAt ?? null,
+      };
+
+      // Full-resolution blobs are only needed while the draft is open (the
+      // lightbox reads them). Now that small data URLs are stored, release
+      // them — otherwise 50 plants × up to 10 photos stay pinned in memory.
+      draft.images.forEach((image, index) => {
+        if (thumbs[index].downscaled) URL.revokeObjectURL(image.thumbnail);
+      });
+
+      setSamples((prev) => [...prev, newSample]);
+      applyDraft(null);
+    } finally {
+      committingRef.current = false;
+    }
+  }, [applyDraft, draftSample, draftSummary, draftValidity, samples.length]);
 
   // ── Heatmap Generation ─────────────────────────────────────
   const handleGenerateHeatmap = useCallback(async () => {
@@ -270,11 +504,11 @@ export default function App() {
     setSamples([]);
     setHeatmapData(null);
     setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
-    setDraftSample(null);
+    applyDraft(null);
     setMapFullscreen(false);
     // Force a full page reload to reset Leaflet + Geoman state cleanly
     window.location.reload();
-  }, []);
+  }, [applyDraft]);
 
   // ── Derived Flags ───────────────────────────────────────────
   // Desktop keeps the side-by-side boxed-card split (with its own
@@ -285,12 +519,19 @@ export default function App() {
   const isDesktopSamplingSplit =
     currentStep === STEPS.SAMPLING && !isMobile && !mapFullscreen;
   const isMobileSampling = currentStep === STEPS.SAMPLING && isMobile;
+  // A per-photo failure no longer blocks the plant — it's excluded from the
+  // pooled severity instead. What IS still required: nothing mid-flight, and
+  // at least one photo that actually produced a measurement.
   const canAddSample =
     !!draftSample &&
-    !draftSample.analyzing &&
     !draftSample.locating &&
+    !!draftSummary &&
+    draftSummary.analyzingCount === 0 &&
+    draftSummary.usableCount > 0 &&
+    draftSummary.severity !== null &&
     draftValidity.isValid &&
     samples.length < MAX_SAMPLES;
+  const isImagesMaxed = (draftSample?.images.length ?? 0) >= MAX_IMAGES_PER_SAMPLE;
   const coordWarning =
     draftSample && draftValidity.hasCoords && !draftValidity.isInside
       ? 'This point is outside your field boundary.'
@@ -314,13 +555,19 @@ export default function App() {
         {isDesktopSamplingSplit && (
           <SamplePanel
             draft={draftSample}
-            onImageSelected={handleImageSelected}
+            summary={draftSummary}
+            onImagesSelected={handleImagesSelected}
             onCoordChange={handleDraftCoordChange}
             onAddSample={handleAddSample}
+            onRemoveImage={handleRemoveDraftImage}
+            onRetryImage={handleRetryImage}
+            onDismissImageWarning={handleDismissImageWarning}
+            onDiscardDraft={handleDiscardDraft}
             canAddSample={canAddSample}
             coordWarning={coordWarning}
             disabled={isProcessing}
             isMaxed={samples.length >= MAX_SAMPLES}
+            isImagesMaxed={isImagesMaxed}
           />
         )}
 
@@ -388,7 +635,7 @@ export default function App() {
               <div className="map-footer">
                 <div className="upload-counter">
                   <span>
-                    Samples: <span className="upload-counter-value">{samples.length}</span> /{' '}
+                    Plants: <span className="upload-counter-value">{samples.length}</span> /{' '}
                     {MAX_SAMPLES}
                   </span>
                   {samples.length >= MAX_SAMPLES && (
@@ -403,8 +650,8 @@ export default function App() {
                   onClick={handleGenerateHeatmap}
                 >
                   {samples.length < 2
-                    ? `Need at least 2 samples (${samples.length}/2)`
-                    : `Generate Heatmap (${samples.length} samples)`}
+                    ? `Need at least 2 plants (${samples.length}/2)`
+                    : `Generate Heatmap (${samples.length} plants)`}
                 </button>
               </div>
             )}
@@ -419,7 +666,7 @@ export default function App() {
           <div className="mobile-sample-actions">
             <div className="upload-counter">
               <span>
-                Samples: <span className="upload-counter-value">{samples.length}</span> /{' '}
+                Plants: <span className="upload-counter-value">{samples.length}</span> /{' '}
                 {MAX_SAMPLES}
               </span>
               {samples.length >= MAX_SAMPLES && (
@@ -434,20 +681,26 @@ export default function App() {
               onClick={handleGenerateHeatmap}
             >
               {samples.length < 2
-                ? `Need at least 2 samples (${samples.length}/2)`
-                : `Generate Heatmap (${samples.length} samples)`}
+                ? `Need at least 2 plants (${samples.length}/2)`
+                : `Generate Heatmap (${samples.length} plants)`}
             </button>
           </div>
 
           <SampleSheet
             draft={draftSample}
-            onImageSelected={handleImageSelected}
+            summary={draftSummary}
+            onImagesSelected={handleImagesSelected}
             onCoordChange={handleDraftCoordChange}
             onAddSample={handleAddSample}
+            onRemoveImage={handleRemoveDraftImage}
+            onRetryImage={handleRetryImage}
+            onDismissImageWarning={handleDismissImageWarning}
+            onDiscardDraft={handleDiscardDraft}
             canAddSample={canAddSample}
             coordWarning={coordWarning}
             disabled={isProcessing}
             isMaxed={samples.length >= MAX_SAMPLES}
+            isImagesMaxed={isImagesMaxed}
           />
         </>
       )}
