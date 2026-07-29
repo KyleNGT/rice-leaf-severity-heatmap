@@ -87,9 +87,6 @@ export default function SamplePanel({
           onClick={() => cameraRef.current?.click()}
           disabled={sourcesDisabled}
         >
-          {variant !== 'add' && (
-            <span className="upload-source-btn-icon" aria-hidden="true">📷</span>
-          )}
           <span>Camera</span>
         </button>
       )}
@@ -99,9 +96,6 @@ export default function SamplePanel({
         onClick={() => uploadRef.current?.click()}
         disabled={sourcesDisabled}
       >
-        {variant !== 'add' && (
-          <span className="upload-source-btn-icon" aria-hidden="true">🖼️</span>
-        )}
         <span>{isMobile ? 'Gallery' : 'Upload Photos'}</span>
       </button>
     </div>

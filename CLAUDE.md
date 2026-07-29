@@ -34,12 +34,7 @@ These decisions are **locked in** and must not be changed without explicit user 
 
 ## UI/UX Design System
 
-### 🎨 Visual Tokens (Colors)
-- `bg-brand-primary` / `#046307` (Emerald Green - Healthy crops / Success / Zero Pressure Warning)
-- `text-neutral-dark` / `#212222` (Cool Gray - Readable body text)
-- `bg-status-warning` / `#d7e051` (Yellow - Moderate disease pressure warning)
-- `bg-status-danger` / `#ed5d54` (Bright Red - High disease severity/Blight alerts)
-- `bg-canvas` / `#F9FAFB` (Off-white main background)
+Color tokens are defined as CSS custom properties in `src/App.css`'s `:root` block — read there for current hex values.
 
 ### 🔤 Typography (San Francisco Font Family / Sans-serif)
 - Display Stats: 32px, Bold, tight tracking (For confidence percentages, map metrics)
@@ -51,17 +46,11 @@ These decisions are **locked in** and must not be changed without explicit user 
 - Layout Grid: Strictly follow an 8px spacing system (`p-2`, `p-4`, `p-8` / `gap-4`).
 - Container Cards: White background, `border: 1px solid #E5E7EB`, `border-radius: 12px`, soft shadow.
 - Status Badges: Semi-transparent background pill utility matching the disease severity level.
+- No emoji in the UI: buttons, labels, badges, and status text use plain text and/or SVG icons, never emoji characters. Recognition over recall is served by the text label itself; an emoji renders inconsistently across Android devices/fonts, which is a real risk for the mobile-first target audience.
 
 ## IDW Parameters
 
-Defined as constants in `src/constants/constants.js`:
-
-- **Power parameter** `p = 2` — Standard quadratic distance decay.
-- **Cell size** — 2 meters per grid cell.
-- **Max cells** — 50,000 before adaptive coarsening.
-- **Formula** — `Z(x) = Σ(wᵢ × zᵢ) / Σ(wᵢ)` where `wᵢ = 1 / d(x, xᵢ)^p`
-
-Variables: `Z(x)` = estimated severity at target point, `wᵢ` = weight, `zᵢ` = known PDLA at sample i, `dᵢ` = Euclidean distance, `p` = power parameter.
+Tunable constants (power, cell size, max cells) and the formula/variable definitions live as documented constants in `src/constants/constants.js` — read there, not here.
 
 IDW runs in a **Web Worker** (`idwWorker.js`) to avoid freezing the UI.
 
@@ -119,67 +108,7 @@ So the guard is a *band*, not a floor: `MIN/MAX_LEAF_FRAME_FRACTION` and `MIN_LE
 
 **Post-crop note:** the six-row probe table above predates the alignment crop and no longer describes the input distribution this guard actually sees — every photo reaching it is now cropped exactly to the static framing rectangle's boundary, with no separate outer frame guaranteeing background margin the way the old per-region stencils did (each of those enclosed a small, fixed fraction of a larger box, so background survived regardless of how tightly the user filled the outline). Now, how much background survives depends entirely on how loosely the user centers their leaf in the box, per the on-screen instruction text. If well-aligned real photos start landing close to `MAX_LEAF_FRAME_FRACTION` (0.97), that is the first constant to revisit — the safety margin this guard used to get for free is now just a soft expectation, not a structural guarantee.
 
-**Running the backend:**
-```bash
-# One-time setup
-python3 -m venv backend/.venv
-backend/.venv/bin/pip install -r backend/requirements.txt
-
-# Every time
-npm run dev:api
-```
-Then `npm run dev` in a second terminal — Vite proxies `/api/*` to `localhost:8000` (see `vite.config.js`).
-
-`npm run dev:api` invokes `backend/.venv/bin/uvicorn` by explicit path rather than a bare `uvicorn`. **This matters if conda/Anaconda is installed** — `conda init` prepends its own bin dir to `PATH`, which can shadow an activated venv (a new terminal tab, or conda re-asserting itself, silently reverts `uvicorn`/`python` to Anaconda's, which never had `backend/requirements.txt` installed). Symptom: the server crashes on `import torch`, or the front end shows "Cannot reach the analysis server." Verify the interpreter directly with `backend/.venv/bin/python -c "import torch; print(torch.__version__)"`.
-
-## Architecture
-
-```
-src/
-├── App.jsx              # Root state machine (step, boundary, samples, heatmap)
-├── App.css              # All styles. Light theme, system/SF font stack.
-├── main.jsx             # React entry point
-├── constants/
-│   └── constants.js     # All tunable values (IDW params, map defaults, steps)
-├── components/
-│   ├── MapView.jsx              # Leaflet MapContainer + GPS centering
-│   ├── MapController.jsx        # Imperative map recentering/fit
-│   ├── BoundaryDrawer.jsx       # Geoman polygon (desktop, custom toolbar)
-│   ├── MobileBoundaryDrawer.jsx # Center-crosshair drawing for touch devices
-│   ├── ActionPanel.jsx          # Bottom panel (contextual per step)
-│   ├── StepperBar.jsx           # Header progress (pill on mobile, full on desktop)
-│   ├── SamplePanel.jsx          # Photo strip + pooled plant result + Save Plant
-│   ├── SampleSheet.jsx          # Mobile draggable bottom sheet wrapping SamplePanel
-│   ├── ImageAlignmentModal.jsx  # Mandatory pan/zoom/rotate crop before analysis
-│   ├── SampleMarker.jsx         # Committed plant node popup (all its photos)
-│   ├── DraftMarker.jsx          # Live preview pin for the uncommitted plant
-│   ├── HeatmapOverlay.jsx       # Canvas-based IDW render clipped to boundary
-│   ├── ColorLegend.jsx          # Green→Red severity legend
-│   └── LoadingOverlay.jsx       # Processing spinner with progress bar
-├── hooks/
-│   ├── useExifGps.js          # EXIF GPS extraction hook
-│   ├── useDeviceLocation.js   # navigator.geolocation wrapper
-│   ├── useIsMobileViewport.js # 768px breakpoint matchMedia hook
-│   └── useAlignmentQueue.js   # Staging area for photos awaiting alignment
-├── services/
-│   └── mockMLService.js # Calls the real inference API; serializes requests
-└── utils/
-    ├── aggregateSample.js   # Pooled plant PDLA + leaf plausibility guard
-    ├── makeThumbnail.js     # Canvas downscale to data URL (blob-leak control)
-    ├── cropToStencil.js     # Alignment crop encoder (rotate+crop+resample to a fixed size)
-    ├── idwInterpolation.js  # IDW orchestrator (spawns worker)
-    └── idwWorker.js         # Web Worker for grid computation
-
-backend/
-├── inference.py          # TwoStagePipeline — SegFormer phase 1 + 2, PDLA
-├── server.py              # FastAPI app, POST /api/analyze, GET /api/health
-└── requirements.txt
-
-segfomer_model/
-├── deployment_metadata.json         # id2label, disease_class_ids, PDLA formula
-├── phase1_leaf_isolation/           # binary leaf/background SegFormer-B1
-└── phase2_disease_segmentation/     # 5-class disease SegFormer-B1
-```
+**Running the backend:** see the `run-backend` skill for setup steps and the conda/venv-shadowing gotcha.
 
 ## UI / UX Principles
 
@@ -207,6 +136,8 @@ The app supports three ways to georeference a plant node:
 
 **Neither Camera nor Gallery goes straight to the ML pipeline.** Every picked photo queues through `ImageAlignmentModal` — pan/zoom/rotate (coarse 90° steps plus a continuous ±45° straighten slider) and flip horizontal/vertical the leaf into one static square framing rectangle (matching the SegFormer preprocessor's own 512×512 input shape, so its resize is isotropic), the same shape for every photo, then crop to its boundary — before it becomes a draft image. Inside that rectangle, a dashed vertical guide marks 20% of the frame's width, full height: the on-screen instruction asks the farmer to fit the leaf's widest part to that rail without crossing it, giving a consistent blade-width-to-pixel scale across photos taken at different distances. **The guide is static visual guidance only — nothing detects or enforces whether the leaf actually fits it.** This is what makes `aggregateSample.js`'s pixel-count pooling scale-consistent, not just framing-consistent (see Plant-Level Pooling above); there is no path from either capture method to `/api/analyze` that skips it. A photo only becomes part of the draft, and only then starts analysis, once its crop is confirmed — see `useAlignmentQueue.js`. There is no re-align action: the original file isn't retained past a successful crop, so fixing a bad alignment means removing the photo from the strip and retaking it.
 
+Framing feedback is severity-tiered, not one generic warning: a single `alert` object in `ImageAlignmentModal.jsx` (blocking > soft overflow > too-close, at most one shown) drives a badge over the viewfinder, the frame border color/pulse, and a promoted alert card in lockstep, so a hard block (`ALIGN_MAX_OVERFLOW_FRACTION` exceeded, "Use Photo" disabled) never looks like a soft advisory (the 25–40% overflow band, or zoomed in past `ALIGN_BLUR_WARN_SOURCE_WIDTH`) the way the old single `.align-warning` line did.
+
 **The framing rectangle can legally hang off the source photo.** Fitting a close-up leaf to the blade-width guide often means zooming *out*, which is exactly what pushes the frame past the source image's edge — so the confirm gate (`getCropOverflowFraction` in `cropToStencil.js`) is a real clipped-area fraction, not a contained-or-not check, and blocks "Use Photo" only past `ALIGN_MAX_OVERFLOW_FRACTION` (40% of the frame's area). Below that, `cropAlignedImage` paints the uncovered part with `ALIGN_VOID_FILL_RGB` (flat black, `constants.js`) instead of rejecting the photo — PDLA only counts pixels inside the Phase-1 leaf mask, so a fill that reads as background is invariant to the ratio. That color isn't a guess: Phase 1 has no negative class and can misread a flat, uniform fill as leaf (this file's own probe table shows sky-blue scoring 99.97% "leaf"), so `backend/probe_fill.py` measured candidate fills — flat black, soil brown, soil-colored noise, blurred mirror-padding — against the real checkpoint, first on a 5-6 photo convenience sample (an earlier pass picked soil brown), then re-measured on 48 real, raw, unaligned rice-leaf photos spanning all 3 disease classes plus healthy, with genuinely complex backgrounds — other rice plants, unrelated shrubs, bare soil (2026-07-29). That larger run fixed a real bug in the probe script itself (it computed the leaf bbox via the EXIF-orientation-corrected `pipeline.analyze()` but painted the ring on an EXIF-uncorrected raw array — invisible on square crops, but a coordinate-space mismatch on any raw phone photo carrying an EXIF rotation tag, producing spurious "leaks" up to 27% that had nothing to do with any fill color) and reversed the fill-color pick: flat black's worst-case leak was 2.36% of the painted ring area, statistically tied with mirror-blur padding (2.37%) and well ahead of the earlier soil-brown pick (5.10% on this larger set). Black won over the tied mirror-blur candidate because it's the simpler implementation already in place, for no measured leak disadvantage. The cap itself — 40% — was re-measured on the same 48-photo set: mean PDLA drift from the void=0 reference stayed under 1 point at every measured void level (20-50%), and 40% specifically had the *lowest* max drift (7.38) of the whole grid, with the least-favorable individual photo's `leaf_frame_fraction` at 0.046 — comfortably clear of the 0.02 floor. The dataset's remaining noise (max drift still bounces 7-15 points across void levels) traces to a specific, repeatedly-observed pattern, not a void-cap problem: low-severity photos near the `minimum_disease_fraction` censoring threshold are inherently unstable, because PDLA is a ratio with a small numerator there, so small absolute pixel changes cause large relative swings — see the Known Limitations note below. Two of the 50 raw photos gathered for this measurement were excluded first: 2 stock-photo screenshots whose visible watermark text crossed directly over the lesion area, and 2 more whose baseline `leaf_frame_fraction` (0.039 and 0.405) was far enough from anything achievable through the app's own alignment modal that using them as a "before any void" reference point would have measured compounding-error-from-a-bad-starting-point rather than actual void tolerance.
 
 **Location is plant-level and resolved once**, same as before, just timed around the alignment step instead of around selection. The farmer walks around one plant taking several shots, so re-fixing GPS per photo would jitter the pin. For a camera batch, the GPS fix is requested the moment photos are picked (overlapping alignment time, rather than waiting for it) and applied when the first photo of that batch is confirmed. For a gallery batch, EXIF is read from the first *confirmed* photo's original file, not the first *selected* one — skipping a photo in the aligner correctly excludes its EXIF from setting the plant's location. Either way, coordinates already set are never overwritten by a later photo, and a manual edit always wins as the provenance of record (`locationSource: 'manual'`).
@@ -214,15 +145,6 @@ The app supports three ways to georeference a plant node:
 Adding a photo **appends** to the current plant — it does not start a new one. "Save Plant" commits the node and clears the draft; "Discard plant" (behind a confirmation dialog) throws it away. Removing the last photo discards the draft too.
 
 **Blob lifetime:** draft photos are `URL.createObjectURL` blobs (the lightbox needs full resolution). On commit they are downscaled to small data URLs via `makeThumbnail.js` and the object URLs are revoked. Object URLs must never outlive a draft — 50 plants × up to 10 full-resolution photos would otherwise stay pinned in memory on the mid-range Android this targets.
-
-## Key Development Commands
-
-```bash
-npm run dev      # Start Vite dev server (http://localhost:5173)
-npm run build    # Production build
-npm run lint     # Run oxlint
-npm run preview  # Preview production build
-```
 
 ## Known Limitations (Prototype Scope)
 

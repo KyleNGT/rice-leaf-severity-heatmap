@@ -272,6 +272,9 @@ export const ALIGN_WARN_OVERFLOW_FRACTION = 0.25;
  * upsampled to keep its pooling weight proportional to physical area. Only
  * sharpness suffers. Kept equal to ALIGN_OUTPUT_WIDTH by definition — the
  * warning is "we are upsampling at all", not a distinct tuned threshold.
+ * Surfaced in ImageAlignmentModal.jsx as the "Zoomed in too close" caution
+ * alert (`tooClose`) — same expression, just user-facing copy reframed
+ * around the fix (zoom out) rather than the symptom (may look blurry).
  */
 export const ALIGN_BLUR_WARN_SOURCE_WIDTH = ALIGN_OUTPUT_WIDTH;
 
@@ -304,6 +307,16 @@ export const DEFAULT_CENTER = [15.47, 120.59];
 
 /** Satellite-level zoom for field-scale detail. */
 export const DEFAULT_ZOOM = 18;
+
+/**
+ * Horizontal band the Sample History sidebar occupies on desktop (its own
+ * width plus its left inset — see `.history-sidebar` in App.css). When a
+ * sidebar row flies the map to a plant (MapController's focusTarget), the
+ * camera target is biased east by half of this so the node lands centered
+ * in the strip actually visible beside the open sidebar, not underneath it.
+ * Not used on mobile, where the sidebar covers the full width regardless.
+ */
+export const HISTORY_SIDEBAR_OFFSET_PX = 348;
 
 /** Esri World Imagery — free, no API key required. */
 export const ESRI_TILE_URL =

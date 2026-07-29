@@ -18,6 +18,31 @@ const NO_FLIP = { horizontal: false, vertical: false };
 
 let cropFileSeq = 0;
 
+// Plain SVG, not the `⚠` glyph — the design system (CLAUDE.md) bans emoji in
+// the UI because emoji glyphs render inconsistently (often as color emoji)
+// across Android builds, which is exactly the risk on the mid-range Android
+// devices this app targets. Shared by the stage badge and the alert card
+// below so both always show the identical mark.
+function AlertTriangleIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3.5 L22 20.5 H2 Z" />
+      <line x1="12" y1="9.5" x2="12" y2="14.5" />
+      <circle cx="12" cy="17.5" r="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
 /**
  * ============================================================
  * ImageAlignmentModal — Mandatory Crop Before Analysis
@@ -188,8 +213,37 @@ export default function ImageAlignmentModal({
       : 1;
   const coverageOk = overflowFraction <= ALIGN_MAX_OVERFLOW_FRACTION;
   const overflowWarn = coverageOk && overflowFraction > ALIGN_WARN_OVERFLOW_FRACTION;
-  const looksBlurry = !!croppedAreaPixels && croppedAreaPixels.width < ALIGN_BLUR_WARN_SOURCE_WIDTH;
+  // Fires once the crop rect is backed by fewer source pixels than the
+  // 1024px output — i.e. the user has zoomed in past 1:1 and we're
+  // upsampling. See ALIGN_BLUR_WARN_SOURCE_WIDTH in constants.js.
+  const tooClose = !!croppedAreaPixels && croppedAreaPixels.width < ALIGN_BLUR_WARN_SOURCE_WIDTH;
   const isLastInBatch = photoIndex >= totalCount;
+
+  // Single severity model driving the stage badge, the frame border, and the
+  // alert card below — so the three surfaces can never disagree. Precedence:
+  // hard error > blocking overflow > soft overflow > too-close. Only one
+  // alert shows at a time, same as before this was consolidated.
+  const alert = error
+    ? { tier: 'blocking', title: 'Could not process this photo', body: error }
+    : !coverageOk
+      ? {
+          tier: 'blocking',
+          title: 'Zoomed out too far',
+          body: "The frame reaches past your photo's edge. Zoom in a little or re-center so more of the frame overlaps your photo.",
+        }
+      : overflowWarn
+        ? {
+            tier: 'caution',
+            title: "Frame is past your photo's edge",
+            body: "That gap will be filled in automatically and shouldn't affect the reading.",
+          }
+        : tooClose
+          ? {
+              tier: 'caution',
+              title: 'Zoomed in too close',
+              body: 'Zoom out a little for a sharper photo.',
+            }
+          : null;
 
   const handleRotate90 = () => {
     setBaseRotation((prev) => (prev + ALIGN_ROTATION_STEP_DEG) % 360);
@@ -255,12 +309,18 @@ export default function ImageAlignmentModal({
           restrictPosition={false}
           showGrid={false}
           objectFit="contain"
-          classes={{ cropAreaClassName: 'align-frame' }}
+          classes={{ cropAreaClassName: `align-frame ${alert ? `is-${alert.tier}` : ''}` }}
           onCropChange={setCrop}
           onZoomChange={setZoom}
           onCropComplete={(_area, pixels) => setCroppedAreaPixels(pixels)}
           onMediaLoaded={setMediaSize}
         />
+        {alert && (
+          <div className={`align-badge is-${alert.tier}`} aria-hidden="true">
+            <AlertTriangleIcon />
+            <span>{alert.title}</span>
+          </div>
+        )}
       </div>
 
       <p className="align-hint">
@@ -320,15 +380,18 @@ export default function ImageAlignmentModal({
         </button>
       </div>
 
-      {(!coverageOk || overflowWarn || looksBlurry || error) && (
-        <p className="align-warning">
-          {error ||
-            (!coverageOk
-              ? "The frame reaches too far past your photo's edge. Zoom in a little or re-center so more of the frame overlaps your photo."
-              : overflowWarn
-                ? "Part of the frame is past your photo's edge — that gap will be filled in automatically and shouldn't affect the reading."
-                : 'Zoomed in very far — this photo may look blurry.')}
-        </p>
+      {alert && (
+        <div
+          className={`align-alert is-${alert.tier}`}
+          role="alert"
+          aria-live={alert.tier === 'blocking' ? 'assertive' : 'polite'}
+        >
+          <AlertTriangleIcon />
+          <div className="align-alert-text">
+            <p className="align-alert-title">{alert.title}</p>
+            <p className="align-alert-body">{alert.body}</p>
+          </div>
+        </div>
       )}
 
       <div className="align-actions">

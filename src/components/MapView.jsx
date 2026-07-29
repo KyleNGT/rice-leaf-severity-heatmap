@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   DEFAULT_CENTER,
@@ -8,6 +8,8 @@ import {
   ESRI_ATTRIBUTION,
   ESRI_MAX_ZOOM,
   ESRI_MAX_NATIVE_ZOOM,
+  HISTORY_SIDEBAR_OFFSET_PX,
+  STEPS,
 } from '../constants/constants';
 import BoundaryDrawer from './BoundaryDrawer';
 import MobileBoundaryDrawer from './MobileBoundaryDrawer';
@@ -43,10 +45,18 @@ export default function MapView({
   onDrawingStateChange,
   mobileDrawerRef,
   desktopDrawerRef,
+  selection,
+  onSampleSelect,
 }) {
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [isLocating, setIsLocating] = useState(true);
   const isMobile = useIsMobileViewport();
+  const isHeatmap = currentStep === STEPS.HEATMAP;
+  // Node click-to-select only makes sense once the Sample History sidebar
+  // exists to receive it (Heatmap step). Earlier steps keep today's
+  // click-to-open popup on every node — see SampleMarker's docblock.
+  const selectedSample =
+    isHeatmap && selection ? samples.find((s) => s.id === selection.id) : null;
 
   // Attempt GPS centering on mount
   useEffect(() => {
@@ -101,11 +111,17 @@ export default function MapView({
         boundary={boundary}
         isMobile={isMobile}
         mapFullscreen={mapFullscreen}
+        // Only a sidebar-originated selection should move the camera — a
+        // node clicked directly on the map is already exactly where the
+        // user is looking, so flying to it would just be a jarring no-op
+        // pan. See selection.origin below.
+        focusTarget={isHeatmap && selection?.origin === 'sidebar' ? selection : null}
+        focusOffsetX={isMobile ? 0 : HISTORY_SIDEBAR_OFFSET_PX}
       />
 
       {/* Boundary drawing tool — active only during boundary step */}
       <BoundaryDrawer
-        isActive={currentStep === 'boundary'}
+        isActive={currentStep === STEPS.BOUNDARY}
         onBoundaryCreated={onBoundaryCreated}
         drawingAction={drawingAction}
         onDrawingActionChange={onDrawingActionChange}
@@ -114,19 +130,46 @@ export default function MapView({
       />
 
       {/* Center-anchored drawing for mobile — only during initial placement */}
-      {currentStep === 'boundary' && isMobile && !boundary && (
+      {currentStep === STEPS.BOUNDARY && isMobile && !boundary && (
         <MobileBoundaryDrawer
-          isActive={currentStep === 'boundary'}
+          isActive={currentStep === STEPS.BOUNDARY}
           drawerRef={mobileDrawerRef}
           onBoundaryCreated={onBoundaryCreated}
           onDrawingStateChange={onDrawingStateChange}
         />
       )}
 
-      {/* Sample markers */}
+      {/* Sample markers. Click-to-select only wired up once the Sample
+          History sidebar exists to receive it (Heatmap step) — earlier
+          steps pass onSelect={null}, which keeps SampleMarker on its
+          original click-to-open-popup behavior. */}
       {samples.map((sample, idx) => (
-        <SampleMarker key={sample.id} sample={sample} index={idx} />
+        <SampleMarker
+          key={sample.id}
+          sample={sample}
+          index={idx}
+          onSelect={isHeatmap ? onSampleSelect : null}
+          isSelected={isHeatmap && selection?.id === sample.id}
+        />
       ))}
+
+      {/* Selection pulse — a separate, non-interactive ring rather than a
+          toggled class on the sample's own marker: react-leaflet updates an
+          existing CircleMarker's style via Leaflet's setStyle(), which never
+          re-applies pathOptions.className to an already-mounted path (only
+          the SVG renderer's one-time _initPath does). Keying this on
+          `selection.seq` forces a fresh mount on every pick — including
+          re-picking the SAME node — so the CSS animation class is applied
+          new each time and the pulse actually replays. */}
+      {isHeatmap && selectedSample && selection && (
+        <CircleMarker
+          key={`pulse-${selection.id}-${selection.seq}`}
+          center={[selectedSample.lat, selectedSample.lng]}
+          radius={16}
+          interactive={false}
+          pathOptions={{ className: 'sample-pulse-ring', color: '#ffffff', weight: 3, fill: false }}
+        />
+      )}
 
       {/* Heatmap overlay */}
       {heatmapData && (

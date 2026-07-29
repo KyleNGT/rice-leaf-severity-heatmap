@@ -8,6 +8,7 @@ import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
 import ImageAlignmentModal from './components/ImageAlignmentModal';
+import SampleHistorySidebar from './components/SampleHistorySidebar';
 import { useExifGps } from './hooks/useExifGps';
 import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
@@ -94,6 +95,13 @@ export default function App() {
   // ── Heatmap State ──────────────────────────────────────────
   const [heatmapData, setHeatmapData] = useState(null);
   const [heatmapOpacity, setHeatmapOpacity] = useState(HEATMAP_DEFAULT_OPACITY);
+
+  // ── Map <-> Sample History Selection (Heatmap step) ─────────
+  // One shared selection object for BOTH directions of the link between a
+  // map node and its Sample History sidebar row — see MapView.jsx and
+  // SampleHistorySidebar.jsx for how `origin` and `seq` are consumed.
+  //   { id, origin: 'map' | 'sidebar', seq, lat?, lng? }
+  const [selection, setSelection] = useState(null);
 
   // ── Boundary Drawing UI State ──────────────────────────────
   const [drawingAction, setDrawingAction] = useState(null); // 'draw' | 'edit' | 'clear' | null
@@ -549,12 +557,32 @@ export default function App() {
     }
   }, [samples, boundary]);
 
+  // ── Map <-> Sample History Selection ────────────────────────
+  // Two entry points into the same `selection` state — see its declaration
+  // above for the shape. Both bump `seq` off the previous value (not a
+  // fixed increment) so a rapid double-click can't race two updates onto
+  // the same seq — each setState sees the other's result.
+  const handleSampleSelect = useCallback((sampleId) => {
+    setSelection((prev) => ({ id: sampleId, origin: 'map', seq: (prev?.seq ?? 0) + 1 }));
+  }, []);
+
+  const handleFocusOnMap = useCallback((sample) => {
+    setSelection((prev) => ({
+      id: sample.id,
+      lat: sample.lat,
+      lng: sample.lng,
+      origin: 'sidebar',
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+  }, []);
+
   // ── Resume Sampling ────────────────────────────────────────
   // Return to Step 2 keeping boundary + existing samples. Clear the
   // heatmap so the map is clean for new sampling; the user regenerates
   // it (over the fuller sample set) with the existing Generate button.
   const handleResumeSampling = useCallback(() => {
     setHeatmapData(null);
+    setSelection(null);
     setCurrentStep(STEPS.SAMPLING);
   }, []);
 
@@ -565,6 +593,7 @@ export default function App() {
     setSamples([]);
     setHeatmapData(null);
     setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
+    setSelection(null);
     applyDraft(null);
     handleAlignCancel();
     setMapFullscreen(false);
@@ -656,6 +685,8 @@ export default function App() {
                 onDrawingStateChange={setDrawingState}
                 mobileDrawerRef={mobileDrawerRef}
                 desktopDrawerRef={desktopDrawerRef}
+                selection={selection}
+                onSampleSelect={handleSampleSelect}
               />
 
               {/* Center-anchored crosshair — mobile boundary drawing only */}
@@ -788,6 +819,15 @@ export default function App() {
 
       {/* Color legend — visible when heatmap is shown */}
       {currentStep === STEPS.HEATMAP && heatmapData && <ColorLegend />}
+
+      {/* Sample history — hidden left sidebar, Heatmap step only */}
+      {currentStep === STEPS.HEATMAP && (
+        <SampleHistorySidebar
+          samples={samples}
+          selection={selection}
+          onFocusOnMap={handleFocusOnMap}
+        />
+      )}
 
       {/* Alignment modal — a direct child of .app, never nested inside
           <SampleSheet>: .sheet carries a CSS transform, which would make it

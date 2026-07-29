@@ -677,10 +677,10 @@ html, body, #root {
   gap: var(--space-sm);
   min-height: 48px;
   padding: 12px var(--space-md);
-  border: 1px solid var(--upload-card-border);
+  border: 1px solid rgba(4, 99, 7, 0.25);
   border-radius: var(--radius-md);
-  background: #ffffff;
-  color: var(--upload-text);
+  background: rgba(4, 99, 7, 0.04);
+  color: var(--upload-emerald);
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
@@ -691,17 +691,13 @@ html, body, #root {
 
 .upload-source-btn:hover:not(:disabled) {
   border-color: var(--upload-emerald);
+  background: rgba(4, 99, 7, 0.08);
   color: var(--upload-emerald);
 }
 
 .upload-source-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-.upload-source-btn-icon {
-  font-size: 16px;
-  line-height: 1;
 }
 
 /* ── Add Another Leaf (Step 2 — appending to an existing draft) ──
@@ -1414,16 +1410,137 @@ html, body, #root {
   cursor: not-allowed;
 }
 
-.align-warning {
+/* Severity-tiered framing alert — replaces the old single-style
+   `.align-warning`, which rendered a blocking overflow, a soft advisory, and
+   a hard crop error all as the same faint centered caption (18%-alpha danger
+   over the #0f172a overlay composites to a color barely distinct from the
+   panel around it). Tier is driven by the `alert.tier` computed in
+   ImageAlignmentModal.jsx ('blocking' | 'caution') and mirrored on
+   `.align-badge` (over the stage) and `.align-frame.is-*` (the frame
+   border), so all three surfaces always agree. Left-aligned with a bold
+   title + separate body line, unlike the old centered single line, so it
+   reads as an alert rather than ordinary helper copy. */
+.align-alert {
   flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
   margin: 0;
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-md);
-  background: rgba(237, 93, 84, 0.18);
+  border: 1px solid transparent;
+  border-left-width: 4px;
+  text-align: left;
   color: #ffffff;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.align-alert svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.align-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.align-alert-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.align-alert-body {
+  margin: 0;
   font-size: 12px;
   line-height: 1.4;
-  text-align: center;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.align-alert.is-blocking {
+  background: rgba(237, 93, 84, 0.22);
+  border-color: rgba(237, 93, 84, 0.7);
+  color: var(--upload-danger);
+}
+
+.align-alert.is-blocking .align-alert-body {
+  color: #ffffff;
+}
+
+.align-alert.is-caution {
+  background: rgba(215, 224, 81, 0.2);
+  border-color: rgba(215, 224, 81, 0.7);
+  color: var(--upload-warning);
+}
+
+.align-alert.is-caution .align-alert-body {
+  color: #ffffff;
+}
+
+/* Floats over the viewfinder itself so the alert is in the same eye path as
+   the framing it describes, not only below the controls. Title text only —
+   the full explanation stays in .align-alert. pointer-events: none so it
+   never intercepts the Cropper's own drag-to-pan. */
+.align-badge {
+  position: absolute;
+  top: var(--space-sm);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.align-badge.is-blocking {
+  background: var(--upload-danger);
+  color: #ffffff;
+}
+
+.align-badge.is-caution {
+  background: var(--upload-warning);
+  color: #212222;
+}
+
+/* Recolors react-easy-crop's own crop-box element on top of the base
+   .align-stage .align-frame rule above (specificity 0,0,3,0 beats 0,0,2,0,
+   still no !important needed). Border-color ONLY — that element's dimming
+   scrim outside the frame is a `box-shadow` keyed off `color`
+   (react-easy-crop.css), so animating box-shadow or overriding `background`
+   here would break the scrim. Pulse is blocking-only so caution stays calm
+   and doesn't compete for attention. */
+.align-stage .align-frame.is-blocking {
+  border-color: var(--upload-danger);
+  animation: alignPulse 1.1s ease-in-out infinite;
+}
+
+.align-stage .align-frame.is-caution {
+  border-color: var(--upload-warning);
+}
+
+@keyframes alignPulse {
+  0%,
+  100% {
+    border-color: var(--upload-danger);
+  }
+  50% {
+    border-color: rgba(237, 93, 84, 0.45);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .align-stage .align-frame.is-blocking {
+    animation: none;
+  }
 }
 
 .align-actions {
@@ -1472,8 +1589,13 @@ html, body, #root {
   transform: scale(0.98);
 }
 
+/* Neutral grey rather than a dimmed emerald — a faded green still reads as
+   "go" at a glance, which undersold the blocking case (Zoomed out too far)
+   this button guards. Also fires during `busy` (processing), which is
+   correct too. */
 .align-btn-confirm:disabled {
-  opacity: 0.4;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.5);
   cursor: not-allowed;
 }
 
@@ -1485,7 +1607,9 @@ html, body, #root {
 
   .align-controls,
   .align-transform-row,
-  .align-actions {
+  .align-actions,
+  .align-alert,
+  .align-hint {
     max-width: 480px;
     width: 100%;
     margin-inline: auto;
@@ -1730,6 +1854,107 @@ html, body, #root {
   font-family: 'SF Mono', 'Fira Code', monospace;
 }
 
+/* Compact variant — the Heatmap step's hover tooltip (see .sample-tooltip
+   below), capped to a handful of thumbnails since it can't be scrolled. */
+.popup-thumbnail-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.popup-hint {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Sample Tooltip (Step 3 — Heatmap hover card) ─────────────── */
+/* Leaflet's default .leaflet-tooltip is a small white nowrap box with a
+   directional arrow — restyled here to match .sample-popup's card look.
+   Two classes (.sample-tooltip.leaflet-tooltip) beats Leaflet's own
+   single-class rules on specificity, so no !important is needed. */
+.sample-tooltip.leaflet-tooltip {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-family: inherit;
+  /* Leaflet's default nowrap would collapse .popup-content's multi-line
+     stack onto one line. */
+  white-space: normal;
+  padding: 0;
+  opacity: 1;
+}
+
+.sample-tooltip .popup-content {
+  padding: var(--space-sm);
+  max-width: 220px;
+}
+
+.sample-tooltip.leaflet-tooltip-top::before {
+  border-top-color: var(--bg-card);
+}
+
+.sample-tooltip.leaflet-tooltip-bottom::before {
+  border-bottom-color: var(--bg-card);
+}
+
+.sample-tooltip.leaflet-tooltip-left::before {
+  border-left-color: var(--bg-card);
+}
+
+.sample-tooltip.leaflet-tooltip-right::before {
+  border-right-color: var(--bg-card);
+}
+
+/* ── Sample Selection Pulse (Step 3 — Heatmap) ────────────────── */
+/* A separate, non-interactive ring mounted only for the selected node (see
+   MapView.jsx) rather than a class toggled on the sample's own marker —
+   react-leaflet updates an existing path's style via Leaflet's setStyle(),
+   which never re-applies pathOptions.className after the SVG renderer's
+   one-time _initPath. `className` for a CircleMarker lands directly on its
+   <path> element (Leaflet's SVG _initPath: `addClass(path, ...)`), so this
+   class targets the path itself — no wrapping element to reach through.
+   Animating stroke-width/opacity (not radius/transform — Leaflet renders a
+   CircleMarker as an SVG <path>, not a <circle>, so `r` isn't animatable,
+   and `transform: scale()` would scale about the SVG root rather than the
+   ring's own center) is reliable across engines. No `!important` needed:
+   Leaflet's SVG renderer sets stroke-width/opacity as bare presentation
+   attributes (`path.setAttribute('stroke-width', ...)`), which per the CSS
+   cascade carry zero specificity and sit below CSS animations regardless —
+   and since this ring's pathOptions are never updated after mount, that
+   write only ever happens once, at creation, before the animation starts. */
+.sample-pulse-ring {
+  animation: samplePulse 1.1s ease-out 2;
+  pointer-events: none;
+}
+
+@keyframes samplePulse {
+  from {
+    stroke-width: 3;
+    stroke-opacity: 0.9;
+  }
+  to {
+    stroke-width: 18;
+    stroke-opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sample-pulse-ring {
+    animation: none;
+  }
+}
+
 /* ── Color Legend ───────────────────────────────────────────── */
 .color-legend {
   position: absolute;
@@ -1775,6 +2000,307 @@ html, body, #root {
   justify-content: space-between;
   font-size: 0.6rem;
   color: var(--text-muted);
+}
+
+/* ── Sample History Sidebar (Step 3 — Heatmap) ────────────────── */
+/* Hidden by default behind a left-edge tab, matching .map-back-btn's
+   glass-pill language and header-clearance offset so it never renders
+   under the always-on-top .app-header. */
+.history-toggle-btn {
+  position: absolute;
+  top: max(64px, calc(52px + var(--space-sm)));
+  left: var(--space-sm);
+  z-index: var(--z-overlay);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  background: var(--bg-glass);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  transition: transform 0.1s ease;
+}
+
+.history-toggle-btn:active {
+  transform: scale(0.96);
+}
+
+.history-toggle-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent-emerald);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.history-backdrop {
+  position: absolute;
+  top: max(64px, calc(52px + var(--space-sm)));
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-modal);
+  background: rgba(15, 23, 42, 0.25);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.history-sidebar {
+  position: absolute;
+  top: max(64px, calc(52px + var(--space-sm)));
+  bottom: var(--space-sm);
+  left: var(--space-sm);
+  z-index: calc(var(--z-modal) + 1);
+  width: min(86vw, 340px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  transform: translateX(calc(-100% - var(--space-md)));
+  transition: transform 0.25s ease;
+  overflow: hidden;
+}
+
+.history-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.history-sidebar-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.history-sidebar-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.history-sidebar-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.history-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
+  margin: -12px -12px 0 0;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.history-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 var(--space-md);
+}
+
+.history-empty {
+  padding: var(--space-lg) 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.history-plant {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.history-plant:last-child {
+  border-bottom: none;
+}
+
+/* The plant currently linked with the map — set from either direction (a
+   node clicked on the map, or this very row clicked). A left accent bar
+   plus the existing glow tint keeps it legible without relying on scroll
+   position alone once the row has been scrolled into view. */
+.history-plant.is-selected {
+  background: var(--accent-emerald-glow);
+  box-shadow: inset 3px 0 0 var(--accent-emerald);
+}
+
+.history-plant-header:focus-visible {
+  outline: 2px solid var(--accent-emerald);
+  outline-offset: -2px;
+}
+
+.history-plant-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  width: 100%;
+  min-height: 48px;
+  padding: var(--space-sm) 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.history-plant-dot {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+}
+
+.history-plant-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-plant-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.history-plant-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.history-plant-severity {
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.history-plant-meta {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.history-plant-coords {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.history-plant-chevron {
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.history-plant-chevron.is-expanded {
+  transform: rotate(90deg);
+}
+
+.history-photo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: 0 0 var(--space-sm) 22px;
+}
+
+.history-empty-photos {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.history-photo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+}
+
+.history-photo-thumb {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.history-photo.is-excluded .history-photo-thumb {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+
+.history-photo-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.history-photo-severity {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.history-photo-disease {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-photo-confidence {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.history-photo-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(237, 93, 84, 0.14);
+  color: var(--accent-red);
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 /* ── Loading Overlay ────────────────────────────────────────── */
@@ -1944,5 +2470,16 @@ html, body, #root {
 
   .color-legend {
     top: 70px;
+  }
+
+  /* On desktop the sidebar is a narrow ~340px column (see .history-sidebar),
+     not a modal takeover — suppress its dimming backdrop so sample nodes
+     stay clickable on the rest of the map while it's open (this is what
+     makes "click a different node while the sidebar is already open" work).
+     Escape and the × button remain as the close paths. Mobile keeps the
+     backdrop: there the sidebar is min(86vw, 340px), close to the full
+     screen, so it IS effectively modal. */
+  .history-backdrop {
+    display: none;
   }
 }
