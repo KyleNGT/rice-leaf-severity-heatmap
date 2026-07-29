@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { leafQualityWarning } from '../utils/aggregateSample';
 import { MAX_IMAGES_PER_SAMPLE } from '../constants/constants';
+import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 
 /**
  * ============================================================
@@ -55,6 +56,7 @@ export default function SamplePanel({
 }) {
   const cameraRef = useRef(null);
   const uploadRef = useRef(null);
+  const isMobile = useIsMobileViewport();
   const [lightboxSrc, setLightboxSrc] = useState(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
@@ -78,17 +80,19 @@ export default function SamplePanel({
 
   const sourceButtons = (variant) => (
     <div className={`upload-sources${variant === 'add' ? ' upload-sources--add' : ''}`}>
-      <button
-        type="button"
-        className="upload-source-btn"
-        onClick={() => cameraRef.current?.click()}
-        disabled={sourcesDisabled}
-      >
-        {variant !== 'add' && (
-          <span className="upload-source-btn-icon" aria-hidden="true">📷</span>
-        )}
-        <span>Camera</span>
-      </button>
+      {isMobile && (
+        <button
+          type="button"
+          className="upload-source-btn"
+          onClick={() => cameraRef.current?.click()}
+          disabled={sourcesDisabled}
+        >
+          {variant !== 'add' && (
+            <span className="upload-source-btn-icon" aria-hidden="true">📷</span>
+          )}
+          <span>Camera</span>
+        </button>
+      )}
       <button
         type="button"
         className="upload-source-btn"
@@ -98,7 +102,7 @@ export default function SamplePanel({
         {variant !== 'add' && (
           <span className="upload-source-btn-icon" aria-hidden="true">🖼️</span>
         )}
-        <span>Gallery</span>
+        <span>{isMobile ? 'Gallery' : 'Upload Photos'}</span>
       </button>
     </div>
   );
@@ -239,16 +243,20 @@ export default function SamplePanel({
 
   const content = (
     <>
-      {/* Hidden file inputs. Camera is single-shot by nature; Gallery takes
-          several at once so a plant's photos can be picked in one go. */}
-      <input
-        ref={cameraRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        style={{ display: 'none' }}
-        onChange={handleFileChange('camera')}
-      />
+      {/* Hidden file inputs. Camera is single-shot by nature and desktop-only
+          browsers ignore capture="environment" anyway, so it's mobile-only;
+          Gallery takes several at once so a plant's photos can be picked in
+          one go, and is the only source on desktop. */}
+      {isMobile && (
+        <input
+          ref={cameraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: 'none' }}
+          onChange={handleFileChange('camera')}
+        />
+      )}
       <input
         ref={uploadRef}
         type="file"
@@ -261,7 +269,8 @@ export default function SamplePanel({
       {!draft && (
         <>
           <p className="upload-hint">
-            Take photos of several leaves from one plant. A long leaf may need more than one photo.
+            {isMobile ? 'Take photos' : 'Upload photos'} of several leaves from one plant. A
+            long leaf may need more than one photo.
           </p>
           {sourceButtons()}
         </>
