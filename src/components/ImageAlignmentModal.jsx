@@ -10,6 +10,7 @@ import {
   ALIGN_ROTATION_STEP_DEG,
   ALIGN_FINE_ROTATION_RANGE_DEG,
   ALIGN_MAX_OVERFLOW_FRACTION,
+  ALIGN_WARN_OVERFLOW_FRACTION,
   ALIGN_BLUR_WARN_SOURCE_WIDTH,
 } from '../constants/constants';
 
@@ -34,7 +35,13 @@ let cropFileSeq = 0;
  * of relying on react-easy-crop's built-in position clamping — that internal
  * logic is the part of the library most likely to shift between versions,
  * whereas the gate here is a plain inverse-transform check we can verify
- * ourselves, exact at any angle.
+ * ourselves, exact at any angle. The gate is a real area fraction, not
+ * contained-or-not: up to ALIGN_MAX_OVERFLOW_FRACTION of the frame may hang
+ * off the source photo and still confirm, because zooming OUT to fit a
+ * close-up leaf to the blade-width guide below is exactly what pushes the
+ * frame past the image edge — cropAlignedImage fills that gap with
+ * ALIGN_VOID_FILL_RGB rather than rejecting the photo (see that constant and
+ * cropToStencil.js for the measurement behind the color and the cap).
  *
  * Flip has no equivalent react-easy-crop prop, so it's baked into a
  * regenerated "working" File/URL (flipImage, cropToStencil.js) BEFORE it
@@ -180,6 +187,7 @@ export default function ImageAlignmentModal({
       ? getCropOverflowFraction(croppedAreaPixels, rotation, mediaSize)
       : 1;
   const coverageOk = overflowFraction <= ALIGN_MAX_OVERFLOW_FRACTION;
+  const overflowWarn = coverageOk && overflowFraction > ALIGN_WARN_OVERFLOW_FRACTION;
   const looksBlurry = !!croppedAreaPixels && croppedAreaPixels.width < ALIGN_BLUR_WARN_SOURCE_WIDTH;
   const isLastInBatch = photoIndex >= totalCount;
 
@@ -312,12 +320,14 @@ export default function ImageAlignmentModal({
         </button>
       </div>
 
-      {(!coverageOk || looksBlurry || error) && (
+      {(!coverageOk || overflowWarn || looksBlurry || error) && (
         <p className="align-warning">
           {error ||
             (!coverageOk
-              ? 'The frame extends past the edge of your photo. Zoom out or pan to fit it inside.'
-              : 'Zoomed in very far — this photo may look blurry.')}
+              ? "The frame reaches too far past your photo's edge. Zoom in a little or re-center so more of the frame overlaps your photo."
+              : overflowWarn
+                ? "Part of the frame is past your photo's edge — that gap will be filled in automatically and shouldn't affect the reading."
+                : 'Zoomed in very far — this photo may look blurry.')}
         </p>
       )}
 

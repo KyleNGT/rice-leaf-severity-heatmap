@@ -1323,7 +1323,7 @@ html, body, #root {
   top: 0;
   bottom: 0;
   left: 50%;
-  width: calc(var(--align-guide-width-fraction, 0.25) * 100%);
+  width: calc(var(--align-guide-width-fraction, 0.2) * 100%);
   box-sizing: border-box;
   transform: translateX(-50%);
   border-left: 2px dashed rgba(255, 255, 255, 0.85);

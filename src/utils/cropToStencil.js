@@ -27,6 +27,7 @@ import {
   ALIGN_OUTPUT_WIDTH,
   ALIGN_OUTPUT_HEIGHT,
   ALIGN_JPEG_QUALITY,
+  ALIGN_VOID_FILL_RGB,
 } from '../constants/constants.js';
 
 function loadBitmap(file) {
@@ -60,21 +61,61 @@ function rotatePoint(p, degrees) {
 }
 
 /**
- * Does the crop rect fall fully inside the source image, at ANY rotation
- * angle — not just multiples of 90°?
+ * Sutherland-Hodgman clip of a convex polygon against one half-plane.
+ * `isInside(p)` decides which side of the boundary keeps a point;
+ * `intersect(a, b)` gives the point where segment a→b crosses it. Used below
+ * to clip the (possibly rotated) crop-rect-in-image-space quadrilateral
+ * against the four half-planes of the source image's axis-aligned bounds.
+ */
+function clipHalfPlane(polygon, isInside, intersect) {
+  if (polygon.length === 0) return polygon;
+  const output = [];
+  for (let i = 0; i < polygon.length; i += 1) {
+    const current = polygon[i];
+    const prev = polygon[(i + polygon.length - 1) % polygon.length];
+    const currentIn = isInside(current);
+    const prevIn = isInside(prev);
+    if (currentIn) {
+      if (!prevIn) output.push(intersect(prev, current));
+      output.push(current);
+    } else if (prevIn) {
+      output.push(intersect(prev, current));
+    }
+  }
+  return output;
+}
+
+/** Shoelace formula. Works for any simple polygon, convex or not. */
+function polygonArea(polygon) {
+  let sum = 0;
+  for (let i = 0; i < polygon.length; i += 1) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+/**
+ * What fraction of the crop rect's own area falls outside the source image's
+ * bounds, at ANY rotation angle — not just multiples of 90°?
  *
  * cropAlignedImage draws image-local point `L` (origin at the image's own
- * center) to bbox-space position `Rotate(rotation)·L + (bW/2, bH/2)`. This is
- * the algebraic inverse of exactly that: take each corner of the crop rect
- * (in bbox-space), undo the translate-to-center and the rotation, and check
- * whether the result lands inside `[0,mediaW] × [0,mediaH]`. It's not an
- * approximation — it's the same transform cropAlignedImage uses, run
- * backwards — so it's equally exact whether `rotation` is 0, 90, or 37.5.
+ * center) to bbox-space position `Rotate(rotation)·L + (bW/2, bH/2)`. This
+ * function undoes exactly that for each corner of the crop rect — undo the
+ * translate-to-center and the rotation — to get the crop rect's quadrilateral
+ * in image-pixel space (a rotation, so this is area-preserving: the
+ * quadrilateral's area equals the crop rect's own `w * h`). That quadrilateral
+ * is then clipped against the image's axis-aligned bounds
+ * `[0,mediaW] × [0,mediaH]` via Sutherland-Hodgman, and the overflow fraction
+ * is `1 - clippedArea / cropArea`.
  *
- * Returns a boolean-as-0/1 rather than a fractional overlap area: the only
- * thing callers do with this is threshold it against
- * ALIGN_MAX_OVERFLOW_FRACTION, so a precise partial-overlap area (which
- * would need actual polygon clipping) isn't worth building.
+ * This is not an approximation — it's the same transform cropAlignedImage
+ * uses, run backwards, plus exact polygon clipping — so it's equally exact
+ * whether `rotation` is 0, 90, or 37.5, and equally exact for a corner
+ * poking 1% past the edge as for one poking 90% past it. That precision is
+ * what lets ALIGN_MAX_OVERFLOW_FRACTION be a real area-fraction cap (see
+ * constants.js) rather than the old binary contained/not-contained gate.
  *
  * @param {{x:number,y:number,width:number,height:number}} croppedAreaPixels
  * @param {number} rotation — degrees; any value.
@@ -82,37 +123,55 @@ function rotatePoint(p, degrees) {
  *   onMediaLoaded payload. Its `width`/`height` fields are the on-screen
  *   RENDERED size (CSS px); `croppedAreaPixels` is in natural image pixels,
  *   so this must read `naturalWidth`/`naturalHeight`, not `width`/`height`.
- * @returns {number} `0` if fully contained, `1` otherwise.
+ * @returns {number} `0` if fully contained, up to `1` if entirely outside.
  */
 export function getCropOverflowFraction(croppedAreaPixels, rotation, mediaSize) {
   const { naturalWidth: mediaW, naturalHeight: mediaH } = mediaSize;
   const { width: bW, height: bH } = rotatedBoundingBox(mediaW, mediaH, rotation);
   const { x, y, width: w, height: h } = croppedAreaPixels;
 
+  const cropArea = w * h;
+  if (cropArea <= 0) return 0;
+
+  const cornersInImageSpace = [
+    { x, y },
+    { x: x + w, y },
+    { x: x + w, y: y + h },
+    { x, y: y + h },
+  ].map((corner) => {
+    const centered = { x: corner.x - bW / 2, y: corner.y - bH / 2 };
+    const local = rotatePoint(centered, -rotation);
+    return { x: local.x + mediaW / 2, y: local.y + mediaH / 2 };
+  });
+
   // A half-pixel of slack absorbs floating-point rounding in the trig above
   // without meaningfully loosening the check.
   const EPSILON = 0.5;
 
-  const corners = [
-    { x, y },
-    { x: x + w, y },
-    { x, y: y + h },
-    { x: x + w, y: y + h },
-  ];
+  let clipped = cornersInImageSpace;
+  clipped = clipHalfPlane(
+    clipped,
+    (p) => p.x >= -EPSILON,
+    (a, b) => ({ x: 0, y: a.y + ((0 - a.x) / (b.x - a.x)) * (b.y - a.y) })
+  );
+  clipped = clipHalfPlane(
+    clipped,
+    (p) => p.x <= mediaW + EPSILON,
+    (a, b) => ({ x: mediaW, y: a.y + ((mediaW - a.x) / (b.x - a.x)) * (b.y - a.y) })
+  );
+  clipped = clipHalfPlane(
+    clipped,
+    (p) => p.y >= -EPSILON,
+    (a, b) => ({ x: a.x + ((0 - a.y) / (b.y - a.y)) * (b.x - a.x), y: 0 })
+  );
+  clipped = clipHalfPlane(
+    clipped,
+    (p) => p.y <= mediaH + EPSILON,
+    (a, b) => ({ x: a.x + ((mediaH - a.y) / (b.y - a.y)) * (b.x - a.x), y: mediaH })
+  );
 
-  const allContained = corners.every((corner) => {
-    const centered = { x: corner.x - bW / 2, y: corner.y - bH / 2 };
-    const local = rotatePoint(centered, -rotation);
-    const imagePixel = { x: local.x + mediaW / 2, y: local.y + mediaH / 2 };
-    return (
-      imagePixel.x >= -EPSILON &&
-      imagePixel.x <= mediaW + EPSILON &&
-      imagePixel.y >= -EPSILON &&
-      imagePixel.y <= mediaH + EPSILON
-    );
-  });
-
-  return allContained ? 0 : 1;
+  const clippedArea = polygonArea(clipped);
+  return Math.min(1, Math.max(0, 1 - clippedArea / cropArea));
 }
 
 /**
@@ -168,12 +227,28 @@ export async function cropAlignedImage({ file, croppedAreaPixels, rotation = 0, 
     // transferring an HTMLCanvasElement after drawing to it, which throws
     // once a 2D context already exists on that element.
     const canvas = makeCanvas(ALIGN_OUTPUT_WIDTH, ALIGN_OUTPUT_HEIGHT);
-    // alpha:false — any pixel the transform doesn't cover would otherwise be
-    // transparent (which JPEG encodes as black anyway) and costs an extra
-    // compositing pass; the overflow gate upstream should make this moot.
+    // alpha:false — the fill below always paints every pixel opaque, so there's
+    // no transparency to composite and this avoids the extra pass.
     const ctx = canvas.getContext('2d', { alpha: false });
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+
+    // The framing rectangle can legally hang off the source image up to
+    // ALIGN_MAX_OVERFLOW_FRACTION (see constants.js — a farmer zooming OUT to
+    // fit a close-up leaf to the blade-width guide is exactly what pushes the
+    // frame past the image edge, and the gate no longer blocks that). Paint
+    // the whole output canvas with ALIGN_VOID_FILL_RGB BEFORE any transform is
+    // applied — i.e. in output pixel space, not source space — so it sits
+    // "behind" the photo. drawImage below then opaquely overwrites every pixel
+    // the transformed source actually covers; whatever it doesn't reach (the
+    // overflow) is left showing this fill. Phase A measured this exact color
+    // against the real Phase-1 checkpoint (backend/probe_fill.py) as the
+    // fill least likely to be misread as leaf tissue — an arbitrary flat color
+    // is NOT safe by default (a synthetic sky-blue fill scored 99.97% "leaf"
+    // in the probe table in CLAUDE.md); this one was picked because it wasn't.
+    const [fillR, fillG, fillB] = ALIGN_VOID_FILL_RGB;
+    ctx.fillStyle = `rgb(${fillR}, ${fillG}, ${fillB})`;
+    ctx.fillRect(0, 0, ALIGN_OUTPUT_WIDTH, ALIGN_OUTPUT_HEIGHT);
 
     ctx.scale(ALIGN_OUTPUT_WIDTH / croppedAreaPixels.width, ALIGN_OUTPUT_HEIGHT / croppedAreaPixels.height);
     ctx.translate(-croppedAreaPixels.x, -croppedAreaPixels.y);

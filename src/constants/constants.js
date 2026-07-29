@@ -64,12 +64,12 @@ export const MAX_IMAGES_PER_SAMPLE = 10;
  *
  * The frame now also carries a static blade-width guide (see
  * ALIGN_GUIDE_WIDTH_FRACTION below) whose whole point is to get the farmer to
- * fill only ~25% of the frame's width with leaf. A photo that actually follows
+ * fill only ~20% of the frame's width with leaf. A photo that actually follows
  * the guide therefore has a STRUCTURAL leaf_frame_fraction ceiling around
- * 0.25, which makes today's MAX_LEAF_FRAME_FRACTION (0.97) very loose relative
+ * 0.20, which makes today's MAX_LEAF_FRAME_FRACTION (0.97) very loose relative
  * to a compliant photo — but nothing here retunes it, since the guide is
  * advisory only (no sensor checks compliance) and 0.97 must stay wide enough
- * to still pass an uncompliant-but-real photo. 0.25 is the number to compare
+ * to still pass an uncompliant-but-real photo. 0.20 is the number to compare
  * against once real cropped field captures are measured; the probe table
  * above was taken on *uncropped, unguided* images and describes neither this
  * guard's current input distribution nor the post-guide one.
@@ -138,7 +138,7 @@ export const ALIGN_STAGE_INSET_FRACTION = 0.92;
  * photo complies; see the leaf-plausibility-guard comment above for the
  * consequence of that.
  */
-export const ALIGN_GUIDE_WIDTH_FRACTION = 0.25;
+export const ALIGN_GUIDE_WIDTH_FRACTION = 0.2;
 
 /**
  * JPEG encode quality for the cropped output. This blob is the measurement
@@ -176,12 +176,92 @@ export const ALIGN_ROTATION_STEP_DEG = 90;
 export const ALIGN_FINE_ROTATION_RANGE_DEG = 45;
 
 /**
- * How much of the crop rect is allowed to hang off the source image before
- * "Use Photo" is blocked — a tiny epsilon for floating-point slack, not a
- * real allowance. getCropOverflowFraction is exact at any rotation angle, so
- * this threshold applies uniformly regardless of how `rotation` was reached.
+ * The color the alignment crop's void (the part of the framing rectangle that
+ * hangs off the source image, up to ALIGN_MAX_OVERFLOW_FRACTION below) gets
+ * painted before the crop reaches Phase 1 — see cropAlignedImage in
+ * cropToStencil.js. This is NOT an arbitrary choice: Phase 1 has no negative
+ * class, so a flat fill can get misread as leaf (a synthetic sky-blue probe
+ * scored 99.97% "leaf_frame_fraction" — see the probe table in CLAUDE.md).
+ *
+ * Flat black, not soil brown. Re-measured by backend/probe_fill.py against 48
+ * real, raw rice-leaf photos spanning all 3 disease classes plus healthy,
+ * with genuinely complex backgrounds (other rice plants, unrelated shrubs,
+ * soil) — not isolated studio shots (2026-07-29). Flat black's worst-case
+ * leak was 2.36% of the painted ring area, statistically tied with
+ * mirror-blur padding (2.37%) and clearly ahead of flat soil brown (5.10%,
+ * the earlier pick) and RGB noise (57%, one outlier photo). Black was chosen
+ * over the tied mirror-blur candidate because it's the simpler
+ * implementation already in place (a flat fillRect) for no measured leak
+ * disadvantage — mirror-blur would need real new code (mirror-pad + blur)
+ * for zero measured benefit.
+ *
+ * This measurement also fixed a real bug in probe_fill.py itself: it had
+ * been computing the leaf bbox via pipeline.analyze() (which EXIF-corrects
+ * orientation) but painting the ring on a raw, EXIF-uncorrected array — a
+ * coordinate-space mismatch invisible on square 1024x1024 crops (width can't
+ * swap with height) but catastrophic on raw phone photos carrying an EXIF
+ * Orientation tag, producing spurious leak numbers up to 27% that had
+ * nothing to do with any candidate fill. Earlier soil-brown numbers (2.1%
+ * worst-case, n=5-6) predate that fix and used a much smaller, less diverse
+ * sample; this measurement supersedes them.
  */
-export const ALIGN_MAX_OVERFLOW_FRACTION = 0.005;
+export const ALIGN_VOID_FILL_RGB = [0, 0, 0];
+
+/**
+ * How much of the crop rect's own area is allowed to hang off the source
+ * image before "Use Photo" is blocked. This is a REAL area fraction (see
+ * getCropOverflowFraction's polygon-clipping rewrite in cropToStencil.js),
+ * not the old binary contained/not-contained gate — the gap it allows gets
+ * painted with ALIGN_VOID_FILL_RGB, not rejected, because zooming OUT to fit
+ * a close-up leaf to the blade-width guide (ALIGN_GUIDE_WIDTH_FRACTION) is
+ * exactly what pushes the frame past the image edge, and that is the correct
+ * fix for that case, not a mistake to block.
+ *
+ * Re-measured by backend/probe_fill.py Part 2 (void cap) against the same
+ * 48-photo real, diverse, EXIF-corrected dataset used for ALIGN_VOID_FILL_RGB
+ * (2026-07-29) — the strongest evidence base this constant has had. At
+ * void=40%: mean PDLA drift from the void=0 reference was +0.30 points, and
+ * max |drift| was 7.38 — actually the LOWEST max-drift point across the whole
+ * measured grid (20/30/35/40/45/50%), not merely an acceptable one. Mean
+ * leaf_frame_fraction was 0.1339; the lowest individual photo's ff at 40% was
+ * 0.046 (bacterial_blight_218.jpg), comfortably clear of
+ * MIN_LEAF_FRAME_FRACTION (0.02) — no photo in this larger set came close to
+ * the floor the way the earlier n=6 measurement's blast.jpg did.
+ *
+ * The dataset's remaining noise (max |drift| still bounces 7-15 points
+ * across void levels rather than trending smoothly) traces to a specific,
+ * now three-times-observed pattern: low-severity photos near
+ * minimum_disease_fraction's censoring threshold are inherently unstable,
+ * because PDLA is a ratio with a small numerator there — small absolute
+ * pixel changes cause large relative swings. This shows up at EVERY void
+ * level (not just high ones), so it isn't evidence against the 40% cap
+ * specifically; it's a property of PDLA itself near the censoring floor. See
+ * the Known Limitations note in CLAUDE.md.
+ *
+ * RE-MEASURE if this ever needs to move — do not hand-tune it.
+ */
+export const ALIGN_MAX_OVERFLOW_FRACTION = 0.4;
+
+/**
+ * Below this, the void is present but small enough not to interrupt the
+ * farmer with a warning at all — only coverageOk's block (above
+ * ALIGN_MAX_OVERFLOW_FRACTION) and this soft warning band apply. Between this
+ * and ALIGN_MAX_OVERFLOW_FRACTION, "Use Photo" stays enabled but
+ * ImageAlignmentModal.jsx shows a non-blocking note that part of the frame
+ * will be filled in. Scaled up alongside the 40% cap to keep roughly the same
+ * ~60%-of-cap yellow-zone position the 12%-of-20% version had. Not
+ * independently measured — see ALIGN_MAX_OVERFLOW_FRACTION for the real data
+ * point this is offset from.
+ *
+ * Across the measured grid, drift is systematically *downward* with more
+ * void — shrinking the leaf into fewer output pixels loses lesion detail —
+ * so two photos of the same plant taken at very different void levels are
+ * not perfectly comparable even though both pass this gate. That's a real
+ * cost of the looser cap versus the old 20%, not just a rounding artifact,
+ * and worth stating as a limitation alongside the fill-color/cap sample-size
+ * caveat below.
+ */
+export const ALIGN_WARN_OVERFLOW_FRACTION = 0.25;
 
 /**
  * Below this source-pixel width backing the crop rect, upsampling to

@@ -52,12 +52,13 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from backend.inference import get_pipeline  # noqa: E402
+from backend.inference import get_pipeline, _to_pil  # noqa: E402
 
 # ── Tunables ──────────────────────────────────────────────────────────
-VOID_FRACTIONS = [0.0, 0.15, 0.30, 0.50, 0.65]
-RING_FRACTION = 0.20  # Part 1: border ring width, as a fraction of min(H, W)
-BORDER_SAFETY_MARGIN = 0.03  # leaf bbox must clear the ring by this much of min(H, W), else skip
+VOID_FRACTIONS = [0.0, 0.20, 0.30, 0.35, 0.40, 0.45, 0.50]
+RING_FRACTION = 0.20  # Part 1: max per-side ring width, as a fraction of min(H, W)
+BORDER_SAFETY_MARGIN = 0.03  # small buffer subtracted from each side's raw margin before capping, so the ring never sits pixel-adjacent to the leaf bbox
+MIN_RING_AREA_FRACTION = 0.04  # skip a photo if the total paintable ring area falls under this fraction of the frame
 IMAGE_GLOBS = ("*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG")
 
 SOIL_BROWN_RGB = (92, 71, 53)  # matches the "textured soil" probe row's rough hue in CLAUDE.md
@@ -140,7 +141,13 @@ def run_part1(pipeline, photos: list[Path]) -> dict[str, list[float]]:
     used = 0
 
     for path in photos:
-        pil = Image.open(path).convert("RGB")
+        # _to_pil (not Image.open().convert("RGB")) so this matches the
+        # EXIF-orientation-corrected coordinate space pipeline.analyze()
+        # uses internally for crop_bbox_xyxy — otherwise a phone photo's
+        # EXIF Orientation tag (rotate 90 for display, sensor buffer stored
+        # unrotated) puts the ring in one coordinate space and paints it
+        # onto another, landing on real leaf content instead of background.
+        pil = _to_pil(path)
         arr = np.array(pil)
         H, W = arr.shape[:2]
 
@@ -152,23 +159,31 @@ def run_part1(pipeline, photos: list[Path]) -> dict[str, list[float]]:
         bx0, by0, bx1, by1 = bbox
         L0 = baseline["diagnostics"]["leaf_pixels"]
 
-        ring = round(RING_FRACTION * min(H, W))
-        margin = round(BORDER_SAFETY_MARGIN * min(H, W))
-        clears = (
-            bx0 >= ring + margin
-            and by0 >= ring + margin
-            and (W - bx1) >= ring + margin
-            and (H - by1) >= ring + margin
-        )
-        if not clears:
-            print(f"  skip {path.name}: leaf bbox too close to the border to isolate a clean ring")
+        # Real photos routinely have ~0 margin on top/bottom (the leaf runs
+        # edge to edge there per the app's own framing guidance) — a fixed
+        # four-sided ring would skip nearly every real photo for being "too
+        # close to the border" on a side where that's correct framing, not a
+        # bad photo. Use whatever margin each side actually has instead,
+        # capped at RING_FRACTION of the short side, and only skip if the
+        # total paintable area that leaves is negligible.
+        min_dim = min(H, W)
+        ring_cap = round(RING_FRACTION * min_dim)
+        safety_px = round(BORDER_SAFETY_MARGIN * min_dim)
+
+        top_ring = min(max(0, by0 - safety_px), ring_cap)
+        bottom_ring = min(max(0, (H - by1) - safety_px), ring_cap)
+        left_ring = min(max(0, bx0 - safety_px), ring_cap)
+        right_ring = min(max(0, (W - bx1) - safety_px), ring_cap)
+
+        valid_rect = (top_ring, H - bottom_ring, left_ring, W - right_ring)
+        valid_rgb = arr[top_ring : H - bottom_ring, left_ring : W - right_ring]
+        ring_area = H * W - valid_rgb.shape[0] * valid_rgb.shape[1]
+
+        if ring_area / (H * W) < MIN_RING_AREA_FRACTION:
+            print(f"  skip {path.name}: paintable margin too thin on every side ({ring_area / (H * W):.1%} of frame)")
             continue
 
         used += 1
-        valid_rect = (ring, H - ring, ring, W - ring)
-        valid_rgb = arr[ring : H - ring, ring : W - ring]
-        ring_area = H * W - valid_rgb.shape[0] * valid_rgb.shape[1]
-
         row = [f"{path.name:<28} baseline L0={L0}"]
         for fill_name in FILLS:
             composed = compose_with_fill(H, W, valid_rgb, valid_rect, fill_name)
@@ -218,7 +233,13 @@ def run_part2(pipeline, photos: list[Path], fill_name: str) -> None:
     frame_frac_by_void: dict[float, list[float]] = {v: [] for v in VOID_FRACTIONS}
 
     for path in photos:
-        pil = Image.open(path).convert("RGB")
+        # _to_pil (not Image.open().convert("RGB")) so this matches the
+        # EXIF-orientation-corrected coordinate space pipeline.analyze()
+        # uses internally for crop_bbox_xyxy — otherwise a phone photo's
+        # EXIF Orientation tag (rotate 90 for display, sensor buffer stored
+        # unrotated) puts the ring in one coordinate space and paints it
+        # onto another, landing on real leaf content instead of background.
+        pil = _to_pil(path)
         arr = np.array(pil)
         H, W = arr.shape[:2]
 
