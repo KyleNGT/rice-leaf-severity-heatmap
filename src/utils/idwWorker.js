@@ -2,24 +2,37 @@
  * ============================================================
  * IDW Web Worker — Off-Thread Interpolation Engine
  * ============================================================
- * Runs the Inverse Distance Weighting computation in a
- * background thread to prevent UI freezes.
+ * Runs Inverse Distance Weighting in a background thread to prevent UI
+ * freezes, for one or more channels (disease classes) in a single pass —
+ * see idwInterpolation.js for why one pass beats one worker run per channel.
  *
  * Receives:
- *   { samples, boundaryCoords, cellSize, power, bbox }
+ *   { samples, boundaryCoords, cellSize, power, bbox, channels }
+ *   samples: [{ lat, lng, values: number[] }]  — one value per channel,
+ *            same order as `channels` (a count, not the channel keys
+ *            themselves — idwInterpolation.js owns the key↔index mapping).
  *
  * Posts back:
- *   { grid, min, max, cols, rows }
+ *   { grid, min, max, cols, rows, channels }
+ *   grid is one Float32Array(rows * cols * channels), CHANNEL-MAJOR:
+ *     idx(ch, r, c) = ch * rows * cols + r * cols + c
+ *   so each channel is a contiguous subarray() on the main thread — still a
+ *   single Transferable, still zero-copy. min/max are one array per channel.
  *
- * IDW Formula:
+ * IDW Formula (per channel, same weights shared across all channels since
+ * they depend only on distance, not on value):
  *   Z(x) = Σ(wᵢ · zᵢ) / Σ(wᵢ)
  *   where wᵢ = 1 / d(x, xᵢ)^p
+ *
+ * -1 remains the sentinel for "outside the boundary", written into every
+ * channel of a cell together — see HeatmapOverlay.jsx's `value < 0` guard,
+ * which is unchanged by this file's move to multiple channels.
  */
 
 /* eslint-disable no-restricted-globals */
 
 self.onmessage = function (e) {
-  const { samples, boundaryCoords, cellSize, power, bbox } = e.data;
+  const { samples, boundaryCoords, cellSize, power, bbox, channels } = e.data;
 
   const [minLng, minLat, maxLng, maxLat] = bbox;
 
@@ -37,28 +50,35 @@ self.onmessage = function (e) {
   // Pre-compute the boundary ring for ray-casting PIP test
   const ring = boundaryCoords;
 
-  const grid = new Float32Array(rows * cols);
-  let gridMin = Infinity;
-  let gridMax = -Infinity;
+  const cellCount = rows * cols;
+  const grid = new Float32Array(cellCount * channels);
+  const gridMin = new Array(channels).fill(Infinity);
+  const gridMax = new Array(channels).fill(-Infinity);
   let computedCells = 0;
+
+  // Scratch buffers reused across cells to avoid a per-cell allocation.
+  const numerators = new Float64Array(channels);
 
   for (let r = 0; r < rows; r++) {
     const lat = maxLat - r * stepLat - stepLat / 2;
 
     for (let c = 0; c < cols; c++) {
       const lng = minLng + c * stepLng + stepLng / 2;
-      const idx = r * cols + c;
+      const cellIdx = r * cols + c;
 
       // Point-in-polygon (ray casting)
       if (!pointInPolygon(lng, lat, ring)) {
-        grid[idx] = -1; // Outside boundary
+        for (let ch = 0; ch < channels; ch++) {
+          grid[ch * cellCount + cellIdx] = -1; // Outside boundary
+        }
         continue;
       }
 
-      // IDW interpolation
-      let numerator = 0;
+      // IDW interpolation — weights are per-sample (distance-only), shared
+      // across every channel; only the numerators differ.
+      numerators.fill(0);
       let denominator = 0;
-      let exactMatch = false;
+      let exactMatchIdx = -1;
 
       for (let i = 0; i < samples.length; i++) {
         const dx = lng - samples[i].lng;
@@ -66,26 +86,35 @@ self.onmessage = function (e) {
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < 1e-10) {
-          // Exact match — use this sample's value directly
-          grid[idx] = samples[i].severity;
-          exactMatch = true;
+          // Exact match — use this sample's values directly, for every channel.
+          exactMatchIdx = i;
           break;
         }
 
         const w = 1 / Math.pow(dist, power);
-        numerator += w * samples[i].severity;
         denominator += w;
+        const values = samples[i].values;
+        for (let ch = 0; ch < channels; ch++) {
+          numerators[ch] += w * values[ch];
+        }
       }
 
-      if (!exactMatch) {
-        grid[idx] = denominator > 0 ? numerator / denominator : 0;
+      for (let ch = 0; ch < channels; ch++) {
+        const value =
+          exactMatchIdx >= 0
+            ? samples[exactMatchIdx].values[ch]
+            : denominator > 0
+              ? numerators[ch] / denominator
+              : 0;
+
+        const idx = ch * cellCount + cellIdx;
+        grid[idx] = value;
+
+        if (value < gridMin[ch]) gridMin[ch] = value;
+        if (value > gridMax[ch]) gridMax[ch] = value;
       }
 
-      if (grid[idx] >= 0) {
-        if (grid[idx] < gridMin) gridMin = grid[idx];
-        if (grid[idx] > gridMax) gridMax = grid[idx];
-        computedCells++;
-      }
+      computedCells++;
     }
 
     // Progress reporting every 10 rows
@@ -97,15 +126,19 @@ self.onmessage = function (e) {
     }
   }
 
-  self.postMessage({
-    type: 'result',
-    grid: grid.buffer,
-    min: gridMin,
-    max: gridMax,
-    cols,
-    rows,
-    computedCells,
-  }, [grid.buffer]); // Transfer ownership for zero-copy
+  self.postMessage(
+    {
+      type: 'result',
+      grid: grid.buffer,
+      min: gridMin,
+      max: gridMax,
+      cols,
+      rows,
+      channels,
+      computedCells,
+    },
+    [grid.buffer] // Transfer ownership for zero-copy
+  );
 };
 
 /**

@@ -353,18 +353,59 @@ export const GEO_TIMEOUT_MS = 10000;
 export const ANALYZE_ENDPOINT = '/api/analyze';
 export const ANALYZE_TIMEOUT_MS = 30000;
 
-// ── Severity Color Scale ─────────────────────────────────────
+// ── IRRI Standard Evaluation System (SES) Scales ────────────
 /**
- * Maps normalized severity [0, 1] to hex colors.
- * Green (healthy) → Yellow (moderate) → Red (severe).
+ * The heatmap no longer paints raw PDLA % on a linear ramp. It bands PDLA
+ * into the official IRRI Standard Evaluation System for Rice's 0–9 disease
+ * severity scale, per disease. Two tables exist because IRRI's own breakpoints
+ * differ by disease — Leaf Blast's lesions expand faster than Brown Spot's or
+ * Bacterial Blight's, so blast reaches SES 9 at 65% PDLA while the shared
+ * scale doesn't reach SES 9 until 75%.
+ *
+ * Each array is a breakpoint table indexed by SES level: `bp[k]` is the upper
+ * bound of level `k`'s PDLA band (`bp[0] = 0` is the level-0 anchor, not a
+ * band edge). Every band is `(bp[k-1], bp[k]]` — upper-inclusive — with ONE
+ * documented exception: on the shared scale, level 1 is `(0, 1)`, i.e. its
+ * upper bound of 1 is EXCLUSIVE, because IRRI writes level 2 as "≥1% to 3%".
+ * `bp[9]` is not a real IRRI boundary (both scales are open-ended past level
+ * 8) — it's set to 100 (the max possible PDLA) purely so the continuous
+ * SES mapping in sesScale.js has a finite band to interpolate level 9 within.
+ * See sesScale.js for the code that reads these; see CLAUDE.md's IDW
+ * Parameters section for how the resulting SES value drives rendering.
  */
-export const SEVERITY_COLORS = [
-  [0.0, '#22c55e'],   // green-500  — Healthy
-  [0.25, '#84cc16'],  // lime-500
-  [0.5, '#eab308'],   // yellow-500 — Moderate
-  [0.75, '#f97316'],  // orange-500
-  [1.0, '#ef4444'],   // red-500    — Severe
+export const SES_BREAKPOINTS_SHARED = [0, 1, 3, 5, 10, 15, 25, 50, 75, 100]; // Bacterial Blight, Brown Spot
+export const SES_BREAKPOINTS_BLAST = [0, 0.3, 0.9, 2, 7, 14, 24, 39, 65, 100]; // Leaf Blast
+
+/** Disease labels with no dedicated IRRI table (e.g. a re-trained checkpoint
+ * with a new class) fall back to the shared scale — the conservative choice,
+ * since it reaches SES 9 later than blast's table would. */
+export const SES_FALLBACK_BREAKPOINTS = SES_BREAKPOINTS_SHARED;
+
+/**
+ * SES level → color, index === SES level (0–9). Green (healthy) through
+ * yellow/orange (moderate-severe) into red, then violet for the two most
+ * severe classes — violet reads as "beyond red" without introducing a second
+ * hue family partway through, and keeps SES 8/9 visually distinct from each
+ * other and from SES 7, which the old 5-stop green→red ramp could not do
+ * across 10 discrete classes.
+ */
+export const SES_COLORS = [
+  '#15803d', // SES 0 — green-700 (healthy)
+  '#4d9f3f',
+  '#84cc16', // lime-500
+  '#c6d420',
+  '#eab308', // yellow-500
+  '#f59e0b', // amber-500
+  '#f97316', // orange-500
+  '#dc2626', // red-600
+  '#a21caf', // fuchsia-700
+  '#6d28d9', // SES 9 — violet-700
 ];
+
+/** Layer key for the MAX()-of-diseases surface (see sesGrid.js). Not a real
+ * disease label, so it's kept distinct from anything `disease_labels` could
+ * ever contain. */
+export const HEATMAP_LAYER_GENERAL = 'general';
 
 // ── Heatmap Rendering ────────────────────────────────────────
 export const HEATMAP_DEFAULT_OPACITY = 0.65;

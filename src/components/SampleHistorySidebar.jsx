@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { severityToColor } from '../utils/idwInterpolation';
+import { sesToColor, sampleSesForLayer } from '../utils/sesScale';
+import { HEATMAP_LAYER_GENERAL } from '../constants/constants';
 
 const LOCATION_SOURCE_LABEL = {
   gps: 'GPS',
@@ -48,8 +49,13 @@ function formatCapturedAt(capturedAt) {
  *     closing the sidebar still re-triggers the open/expand/scroll effect.
  *   - `onFocusOnMap(sample)` — called on every row click (expand or
  *     collapse alike) so the map can fly to it and pulse the node.
+ *
+ * `activeLayer` — the heatmap layer currently shown on the map (General or
+ * one disease). Each row's dot and severity color follow it via
+ * sesScale.js's sampleSesForLayer, exactly like SampleMarker, so a plant's
+ * color agrees between the sidebar and the map for whichever layer is up.
  */
-export default function SampleHistorySidebar({ samples, selection, onFocusOnMap }) {
+export default function SampleHistorySidebar({ samples, selection, onFocusOnMap, activeLayer }) {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const contentRef = useRef(null);
@@ -158,7 +164,9 @@ export default function SampleHistorySidebar({ samples, selection, onFocusOnMap 
           )}
 
           {samples.map((sample, index) => {
-            const color = severityToColor(sample.severity);
+            const layerKey = activeLayer ?? HEATMAP_LAYER_GENERAL;
+            const ses = sampleSesForLayer(sample, layerKey);
+            const color = sesToColor(ses);
             const expanded = expandedIds.has(sample.id);
             const isSelected = selection?.id === sample.id;
             const photos = sample.images ?? [];
@@ -182,7 +190,7 @@ export default function SampleHistorySidebar({ samples, selection, onFocusOnMap 
                     <span className="history-plant-title-row">
                       <span className="history-plant-label">Plant #{index + 1}</span>
                       <span className="history-plant-severity" style={{ color }}>
-                        {sample.severity.toFixed(1)}%
+                        {sample.severity.toFixed(1)}% · SES {Math.floor(ses)}
                       </span>
                     </span>
                     <span className="history-plant-meta">

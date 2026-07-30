@@ -36,7 +36,11 @@ export default function MapView({
   boundary,
   onBoundaryCreated,
   samples,
-  heatmapData,
+  heatmapGrid,
+  heatmapCols,
+  heatmapRows,
+  heatmapBbox,
+  heatmapLayer,
   heatmapOpacity,
   draftSample,
   mapFullscreen,
@@ -150,6 +154,7 @@ export default function MapView({
           index={idx}
           onSelect={isHeatmap ? onSampleSelect : null}
           isSelected={isHeatmap && selection?.id === sample.id}
+          activeLayer={isHeatmap ? heatmapLayer : null}
         />
       ))}
 
@@ -171,13 +176,15 @@ export default function MapView({
         />
       )}
 
-      {/* Heatmap overlay */}
-      {heatmapData && (
+      {/* Heatmap overlay — grid is the ACTIVE layer's continuous-SES grid
+          (see sesLayers in App.jsx), not raw PDLA; HeatmapOverlay paints it
+          on the SES ramp regardless of which disease (or General) it is. */}
+      {heatmapGrid && (
         <HeatmapOverlay
-          grid={heatmapData.grid}
-          cols={heatmapData.cols}
-          rows={heatmapData.rows}
-          bbox={heatmapData.bbox}
+          grid={heatmapGrid}
+          cols={heatmapCols}
+          rows={heatmapRows}
+          bbox={heatmapBbox}
           boundary={boundary}
           opacity={heatmapOpacity}
         />

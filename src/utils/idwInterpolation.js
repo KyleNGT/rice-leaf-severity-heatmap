@@ -4,24 +4,44 @@
  * ============================================================
  * Orchestrates the Web Worker and provides a Promise-based API.
  *
+ * Interpolates one Float32Array grid PER DISEASE CHANNEL, in a single
+ * worker pass (see idwWorker.js's channel-major output format) — the
+ * point-in-polygon test is the expensive part of each cell and is identical
+ * across channels, so running the worker once per disease would triple that
+ * cost for nothing. `severityToColor` used to live here; SES coloring now
+ * lives in sesScale.js, since color is a function of banded SES, not raw
+ * PDLA — see sesGrid.js for how a channel's grid gets there.
+ *
  * Usage:
- *   const { grid, cols, rows, min, max } =
- *     await computeIDW(samples, boundary, onProgress);
+ *   const { layers, cols, rows, bbox } =
+ *     await computeIDW(samples, boundary, channelKeys, onProgress);
+ *   // layers[channelKeys[i]] === { grid: Float32Array, min, max }
  */
 
 import * as turf from '@turf/turf';
 import { IDW_POWER, IDW_CELL_SIZE_METERS, IDW_MAX_CELLS } from '../constants/constants';
 
 /**
- * Compute IDW interpolation over a field boundary.
+ * Compute IDW interpolation over a field boundary, one channel per disease.
  *
- * @param {Array<{ lat: number, lng: number, severity: number }>} samples
+ * @param {Array<{ lat: number, lng: number, diseaseSeverity: object }>} samples
  * @param {GeoJSON.Feature<GeoJSON.Polygon>} boundary
+ * @param {string[]} channelKeys — ordered disease labels; a sample with no
+ *   reading for a key contributes a real 0 (a measured absence, not missing
+ *   data) via `sample.diseaseSeverity[key] ?? 0`.
  * @param {(progress: number) => void} [onProgress]
- * @returns {Promise<{ grid: Float32Array, cols: number, rows: number, min: number, max: number, bbox: number[] }>}
+ * @returns {Promise<{
+ *   layers: Record<string, { grid: Float32Array, min: number, max: number }>,
+ *   cols: number, rows: number, bbox: number[], computedCells: number,
+ * }>}
  */
-export function computeIDW(samples, boundary, onProgress) {
+export function computeIDW(samples, boundary, channelKeys, onProgress) {
   return new Promise((resolve, reject) => {
+    if (!channelKeys || channelKeys.length === 0) {
+      reject(new Error('computeIDW requires at least one channel key.'));
+      return;
+    }
+
     // Compute bounding box of the boundary polygon
     const bbox = turf.bbox(boundary); // [minLng, minLat, maxLng, maxLat]
 
@@ -45,6 +65,7 @@ export function computeIDW(samples, boundary, onProgress) {
 
     // Extract the outer ring coordinates [lng, lat]
     const boundaryCoords = boundary.geometry.coordinates[0];
+    const channels = channelKeys.length;
 
     // Spawn Web Worker
     const worker = new Worker(
@@ -56,16 +77,20 @@ export function computeIDW(samples, boundary, onProgress) {
       if (e.data.type === 'progress') {
         onProgress?.(e.data.progress);
       } else if (e.data.type === 'result') {
-        const grid = new Float32Array(e.data.grid);
-        resolve({
-          grid,
-          cols: e.data.cols,
-          rows: e.data.rows,
-          min: e.data.min,
-          max: e.data.max,
-          bbox,
-          computedCells: e.data.computedCells,
+        const { cols, rows, min, max, computedCells } = e.data;
+        const flat = new Float32Array(e.data.grid);
+        const cellCount = cols * rows;
+
+        const layers = {};
+        channelKeys.forEach((key, ch) => {
+          layers[key] = {
+            grid: flat.subarray(ch * cellCount, (ch + 1) * cellCount),
+            min: min[ch],
+            max: max[ch],
+          };
         });
+
+        resolve({ layers, cols, rows, bbox, computedCells, cellSize });
         worker.terminate();
       }
     };
@@ -79,53 +104,13 @@ export function computeIDW(samples, boundary, onProgress) {
       samples: samples.map((s) => ({
         lat: s.lat,
         lng: s.lng,
-        severity: s.severity,
+        values: channelKeys.map((key) => s.diseaseSeverity?.[key] ?? 0),
       })),
       boundaryCoords,
       cellSize,
       power: IDW_POWER,
       bbox,
+      channels,
     });
   });
-}
-
-/**
- * Generate a color from the severity color scale.
- * Linearly interpolates between color stops.
- *
- * @param {number} value — Severity percentage (0–100)
- * @returns {string} — CSS rgba color string
- */
-export function severityToColor(value) {
-  const t = Math.max(0, Math.min(100, value)) / 100;
-
-  // Color stops: green → lime → yellow → orange → red
-  const stops = [
-    { pos: 0.0, r: 34, g: 197, b: 94 },   // #22c55e
-    { pos: 0.25, r: 132, g: 204, b: 22 },  // #84cc16
-    { pos: 0.5, r: 234, g: 179, b: 8 },    // #eab308
-    { pos: 0.75, r: 249, g: 115, b: 22 },  // #f97316
-    { pos: 1.0, r: 239, g: 68, b: 68 },    // #ef4444
-  ];
-
-  // Find the two stops we're between
-  let lower = stops[0];
-  let upper = stops[stops.length - 1];
-  for (let i = 0; i < stops.length - 1; i++) {
-    if (t >= stops[i].pos && t <= stops[i + 1].pos) {
-      lower = stops[i];
-      upper = stops[i + 1];
-      break;
-    }
-  }
-
-  // Interpolate
-  const range = upper.pos - lower.pos || 1;
-  const f = (t - lower.pos) / range;
-
-  const r = Math.round(lower.r + f * (upper.r - lower.r));
-  const g = Math.round(lower.g + f * (upper.g - lower.g));
-  const b = Math.round(lower.b + f * (upper.b - lower.b));
-
-  return `rgb(${r}, ${g}, ${b})`;
 }

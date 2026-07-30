@@ -17,15 +17,26 @@ import { analyzePlantImage } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
 import { summarizePlant, isUsableImage } from './utils/aggregateSample';
 import { makeThumbnails } from './utils/makeThumbnail';
+import { pdlaGridToSes, maxSesGrid } from './utils/sesGrid';
 import {
   STEPS,
   HEATMAP_DEFAULT_OPACITY,
+  HEATMAP_LAYER_GENERAL,
   MAX_SAMPLES,
   MAX_IMAGES_PER_SAMPLE,
 } from './constants/constants';
 import './App.css';
 
 let imageSeq = 0;
+
+/** Synthetic IDW channel used ONLY when no sample has any disease reading
+ * (a field that reads entirely Healthy). computeIDW needs at least one
+ * channel to run at all; every sample contributes 0 on it (via the same
+ * `diseaseSeverity[key] ?? 0` fallback every real channel uses), so the
+ * resulting grid is a flat 0 everywhere inside the boundary — exactly the
+ * flat SES-0 General surface a healthy field should render as. It never
+ * appears in availableLayers; see the heatmapData.diseaseKeys check below. */
+const NO_DISEASE_CHANNEL = '__none__';
 
 /** A freshly-picked photo, before its analysis comes back. */
 function newDraftImage(file, source) {
@@ -93,7 +104,12 @@ export default function App() {
   const [mapFullscreen, setMapFullscreen] = useState(false);
 
   // ── Heatmap State ──────────────────────────────────────────
+  // heatmapData carries the raw per-channel IDW result (PDLA % grids) plus
+  // diseaseKeys (the channels actually interpolated) and displayNames.
+  // heatmapLayer is which of those the user is currently viewing — General
+  // (MAX() of every disease's SES) or one specific disease.
   const [heatmapData, setHeatmapData] = useState(null);
+  const [heatmapLayer, setHeatmapLayer] = useState(HEATMAP_LAYER_GENERAL);
   const [heatmapOpacity, setHeatmapOpacity] = useState(HEATMAP_DEFAULT_OPACITY);
 
   // ── Map <-> Sample History Selection (Heatmap step) ─────────
@@ -148,6 +164,7 @@ export default function App() {
   const handleBoundaryCreated = useCallback((geoJSON) => {
     setBoundary(geoJSON);
     setHeatmapData(null);
+    setHeatmapLayer(HEATMAP_LAYER_GENERAL);
   }, []);
 
   // ── Step Navigation ────────────────────────────────────────
@@ -492,6 +509,16 @@ export default function App() {
         severity: draftSummary.severity,
         diseaseDetected: draftSummary.diseaseDetected,
         diseaseName: draftSummary.diseaseName,
+        // Machine-readable pooled winner — kept alongside diseaseName
+        // (display) now that the heatmap needs to key layers by label.
+        diseaseLabel: draftSummary.diseaseLabel,
+        // Per-disease PDLA % (gated independently — see aggregateSample.js),
+        // plus the label list/display names, so idwInterpolation.js can
+        // derive channels and the heatmap UI can name them without
+        // re-deriving anything from raw classPixels at render time.
+        diseaseSeverity: draftSummary.diseaseSeverity,
+        diseaseLabels: draftSummary.diseaseLabels,
+        diseaseDisplayNames: draftSummary.diseaseDisplayNames,
         // No plant-level confidence is claimed. Each photo's confidence is a
         // mean posterior conditioned on THAT photo's winning class, which may
         // differ from the plant's, so combining them yields a number with no
@@ -541,13 +568,41 @@ export default function App() {
     setLoadingMessage('Computing disease pressure map...');
     setLoadingProgress(0);
     setCurrentStep(STEPS.HEATMAP);
+    // A previous run's layer selection may name a disease this run doesn't
+    // have (samples changed since); always land back on General.
+    setHeatmapLayer(HEATMAP_LAYER_GENERAL);
 
     try {
-      const result = await computeIDW(samples, boundary, (progress) => {
+      // Diseases actually present: at least one plant reads a nonzero
+      // (post-gate) PDLA for it — see aggregateSample.js's diseaseSeverity.
+      // A field that reads entirely Healthy still needs one channel to
+      // interpolate at all; NO_DISEASE_CHANNEL covers that case.
+      const present = new Set();
+      let labelOrder = [];
+      for (const s of samples) {
+        if (labelOrder.length === 0 && s.diseaseLabels?.length) {
+          labelOrder = s.diseaseLabels;
+        }
+        for (const [label, value] of Object.entries(s.diseaseSeverity ?? {})) {
+          if (value > 0) present.add(label);
+        }
+      }
+      const diseaseKeys = labelOrder.filter((label) => present.has(label));
+      for (const label of present) {
+        if (!diseaseKeys.includes(label)) diseaseKeys.push(label);
+      }
+      const channelKeys = diseaseKeys.length > 0 ? diseaseKeys : [NO_DISEASE_CHANNEL];
+
+      const result = await computeIDW(samples, boundary, channelKeys, (progress) => {
         setLoadingProgress(progress);
       });
 
-      setHeatmapData(result);
+      // Display names pooled across every sample, so a disease seen on only
+      // one plant still gets a real name in the layer toggle/legend.
+      const displayNames = {};
+      for (const s of samples) Object.assign(displayNames, s.diseaseDisplayNames ?? {});
+
+      setHeatmapData({ ...result, diseaseKeys, displayNames });
     } catch (err) {
       console.error('IDW computation failed:', err);
     } finally {
@@ -556,6 +611,45 @@ export default function App() {
       setLoadingProgress(null);
     }
   }, [samples, boundary]);
+
+  // ── Layer Derivation (PDLA grids → SES grids) ───────────────
+  // Pure post-processing of heatmapData — switching layers never touches the
+  // worker, so it's instant. See sesGrid.js for why maxing the CONTINUOUS
+  // per-disease SES grids is equivalent to the spec's Math.max() over
+  // integer SES classes.
+  const isHealthyOnlyHeatmap =
+    heatmapData?.diseaseKeys.length === 1 && heatmapData.diseaseKeys[0] === NO_DISEASE_CHANNEL;
+
+  const sesLayers = useMemo(() => {
+    if (!heatmapData) return null;
+    if (isHealthyOnlyHeatmap) {
+      // The synthetic channel's raw PDLA grid is already all-0/-1 — SES of
+      // PDLA 0 is 0 by definition, so it doubles as the SES grid directly.
+      return { [HEATMAP_LAYER_GENERAL]: heatmapData.layers[NO_DISEASE_CHANNEL].grid };
+    }
+
+    const perDisease = {};
+    const sesGrids = [];
+    for (const key of heatmapData.diseaseKeys) {
+      const grid = pdlaGridToSes(heatmapData.layers[key].grid, key);
+      perDisease[key] = grid;
+      sesGrids.push(grid);
+    }
+
+    return { [HEATMAP_LAYER_GENERAL]: maxSesGrid(sesGrids), ...perDisease };
+  }, [heatmapData, isHealthyOnlyHeatmap]);
+
+  // ── Layer Toggle Options ────────────────────────────────────
+  const availableLayers = useMemo(() => {
+    if (!heatmapData) return [];
+    const layers = [{ key: HEATMAP_LAYER_GENERAL, name: 'General Threat' }];
+    if (!isHealthyOnlyHeatmap) {
+      for (const key of heatmapData.diseaseKeys) {
+        layers.push({ key, name: heatmapData.displayNames[key] ?? key });
+      }
+    }
+    return layers;
+  }, [heatmapData, isHealthyOnlyHeatmap]);
 
   // ── Map <-> Sample History Selection ────────────────────────
   // Two entry points into the same `selection` state — see its declaration
@@ -582,6 +676,7 @@ export default function App() {
   // it (over the fuller sample set) with the existing Generate button.
   const handleResumeSampling = useCallback(() => {
     setHeatmapData(null);
+    setHeatmapLayer(HEATMAP_LAYER_GENERAL);
     setSelection(null);
     setCurrentStep(STEPS.SAMPLING);
   }, []);
@@ -592,6 +687,7 @@ export default function App() {
     setBoundary(null);
     setSamples([]);
     setHeatmapData(null);
+    setHeatmapLayer(HEATMAP_LAYER_GENERAL);
     setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
     setSelection(null);
     applyDraft(null);
@@ -631,6 +727,32 @@ export default function App() {
   // ── Render ─────────────────────────────────────────────────
   return (
     <div className="app">
+      {/* Orientation lock — pure-CSS overlay, shown only via the
+          `(max-height: 500px) and (orientation: landscape)` media query
+          in App.css. Always rendered so there's no mount/unmount flicker
+          on rotate; visibility is entirely the browser's media-query
+          evaluation, not React state. */}
+      <div className="orientation-lock" role="alert" aria-live="assertive">
+        <svg
+          className="orientation-lock-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          aria-hidden="true"
+        >
+          <rect x="7" y="2" width="10" height="16" rx="2" />
+          <line x1="11" y1="15" x2="13" y2="15" />
+          <path d="M20 9v8a2 2 0 0 1-2 2h-3" strokeLinecap="round" />
+          <path d="M17 16l3 3-3 3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <p className="orientation-lock-title">Rotate Your Device</p>
+        <p className="orientation-lock-body">
+          This app is designed for portrait mode. Please rotate your phone back to
+          continue.
+        </p>
+      </div>
+
       {/* Header */}
       <header className="app-header">
         <h1 className="app-title">Rice Leaf Severity</h1>
@@ -676,7 +798,11 @@ export default function App() {
                 boundary={boundary}
                 onBoundaryCreated={handleBoundaryCreated}
                 samples={samples}
-                heatmapData={heatmapData}
+                heatmapGrid={heatmapData ? sesLayers?.[heatmapLayer] : null}
+                heatmapCols={heatmapData?.cols}
+                heatmapRows={heatmapData?.rows}
+                heatmapBbox={heatmapData?.bbox}
+                heatmapLayer={heatmapLayer}
                 heatmapOpacity={heatmapOpacity}
                 draftSample={draftSample}
                 mapFullscreen={mapFullscreen}
@@ -808,6 +934,9 @@ export default function App() {
         heatmapOpacity={heatmapOpacity}
         onOpacityChange={setHeatmapOpacity}
         heatmapData={heatmapData}
+        availableLayers={availableLayers}
+        heatmapLayer={heatmapLayer}
+        onHeatmapLayerChange={setHeatmapLayer}
         drawingAction={drawingAction}
         onDrawingActionChange={setDrawingAction}
         drawingState={drawingState}
@@ -818,7 +947,12 @@ export default function App() {
       />
 
       {/* Color legend — visible when heatmap is shown */}
-      {currentStep === STEPS.HEATMAP && heatmapData && <ColorLegend />}
+      {currentStep === STEPS.HEATMAP && heatmapData && (
+        <ColorLegend
+          activeLayer={heatmapLayer}
+          layerName={availableLayers.find((l) => l.key === heatmapLayer)?.name}
+        />
+      )}
 
       {/* Sample history — hidden left sidebar, Heatmap step only */}
       {currentStep === STEPS.HEATMAP && (
@@ -826,6 +960,7 @@ export default function App() {
           samples={samples}
           selection={selection}
           onFocusOnMap={handleFocusOnMap}
+          activeLayer={heatmapLayer}
         />
       )}
 

@@ -162,7 +162,17 @@ export default function ImageAlignmentModal({
         height = maxHeight;
         width = height * ALIGN_ASPECT;
       }
-      setCropSize({ width: Math.round(width), height: Math.round(height) });
+      const nextWidth = Math.round(width);
+      const nextHeight = Math.round(height);
+      // Skip the update (and the <Cropper> re-render it triggers) when the
+      // rounded size hasn't actually changed — sub-pixel ResizeObserver
+      // noise would otherwise reach the crop box even though nothing the
+      // user can see moved.
+      setCropSize((prev) =>
+        prev && prev.width === nextWidth && prev.height === nextHeight
+          ? prev
+          : { width: nextWidth, height: nextHeight }
+      );
     });
     observer.observe(stage);
     return () => observer.disconnect();
@@ -229,7 +239,7 @@ export default function ImageAlignmentModal({
       ? {
           tier: 'blocking',
           title: 'Zoomed out too far',
-          body: "The frame reaches past your photo's edge. Zoom in a little or re-center so more of the frame overlaps your photo.",
+          body: 'Zoom in or re-center so more of the frame overlaps your photo.',
         }
       : overflowWarn
         ? {
@@ -380,19 +390,21 @@ export default function ImageAlignmentModal({
         </button>
       </div>
 
-      {alert && (
-        <div
-          className={`align-alert is-${alert.tier}`}
-          role="alert"
-          aria-live={alert.tier === 'blocking' ? 'assertive' : 'polite'}
-        >
-          <AlertTriangleIcon />
-          <div className="align-alert-text">
-            <p className="align-alert-title">{alert.title}</p>
-            <p className="align-alert-body">{alert.body}</p>
+      <div className="align-alert-slot">
+        {alert && (
+          <div
+            className={`align-alert is-${alert.tier}`}
+            role="alert"
+            aria-live={alert.tier === 'blocking' ? 'assertive' : 'polite'}
+          >
+            <AlertTriangleIcon />
+            <div className="align-alert-text">
+              <p className="align-alert-title">{alert.title}</p>
+              <p className="align-alert-body">{alert.body}</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="align-actions">
         {totalCount > 1 && (

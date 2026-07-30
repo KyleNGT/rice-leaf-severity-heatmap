@@ -1,8 +1,44 @@
 import { useMemo } from 'react';
 import { CircleMarker, Popup, Tooltip } from 'react-leaflet';
-import { severityToColor } from '../utils/idwInterpolation';
+import { sesToColor, sampleSesForLayer, pdlaToSes } from '../utils/sesScale';
+import { HEATMAP_LAYER_GENERAL } from '../constants/constants';
 
 const COMPACT_THUMBNAIL_LIMIT = 4;
+
+/**
+ * Per-disease SES breakdown for a plant — General (MAX() of every disease's
+ * SES, see sesGrid.js) plus one row per disease this checkpoint reports, so
+ * a node's popup carries the same layers the heatmap toggle offers. Renders
+ * nothing before any sample has ever carried diseaseLabels (defensive only —
+ * every sample committed by this build always has them).
+ */
+function DiseaseSesTable({ sample }) {
+  const labels = sample.diseaseLabels ?? [];
+  if (labels.length === 0) return null;
+
+  const generalSes = Math.floor(sampleSesForLayer(sample, HEATMAP_LAYER_GENERAL));
+
+  return (
+    <div className="popup-ses-table">
+      <div className="popup-ses-row popup-ses-row--general">
+        <span>General threat</span>
+        <span>SES {generalSes}</span>
+      </div>
+      {labels.map((label) => {
+        const pdla = sample.diseaseSeverity?.[label] ?? 0;
+        const ses = pdlaToSes(pdla, label);
+        return (
+          <div className="popup-ses-row" key={label}>
+            <span>{sample.diseaseDisplayNames?.[label] ?? label}</span>
+            <span>
+              {pdla.toFixed(1)}% · SES {ses}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 /**
  * ============================================================
@@ -52,6 +88,7 @@ function SampleSummary({ sample, index, color, compact = false }) {
             ? ` · ${spread.min.toFixed(1)}–${spread.max.toFixed(1)}% per photo`
             : ''}
         </span>
+        <DiseaseSesTable sample={sample} />
         {!compact && (
           <span className="popup-coords">
             {sample.lat.toFixed(6)}, {sample.lng.toFixed(6)}
@@ -67,11 +104,16 @@ function SampleSummary({ sample, index, color, compact = false }) {
  * ============================================================
  * SampleMarker — Color-coded sample node on the map
  * ============================================================
- * Renders a single plant sample as a circle marker, colored by its severity
- * percentage (green → red). The severity shown is pooled across every usable
- * photo taken at that plant, so the card also reports how many photos back
- * it and how much they disagreed — a node built from one blurry shot and one
- * built from eight should not look alike.
+ * Renders a single plant sample as a circle marker, colored by its SES on
+ * the ACTIVE heatmap layer (`activeLayer` — General or one disease; see
+ * sesScale.js's sampleSesForLayer), so a node's color always agrees with the
+ * surface cell underneath it. Before a heatmap exists (Boundary/Sampling
+ * steps, `activeLayer` null), it falls back to the plant's own General SES.
+ * The popup/tooltip still reports the pooled PDLA % and disease name
+ * regardless of layer, plus a per-disease SES breakdown — see
+ * DiseaseSesTable above — so a node built from one blurry shot and one built
+ * from eight should not look alike, and switching layers on the map doesn't
+ * hide any of a plant's other readings.
  *
  * Two overlay modes, chosen by whether `onSelect` is supplied:
  *
@@ -94,8 +136,15 @@ function SampleSummary({ sample, index, color, compact = false }) {
  *     it, so a tap would leave the card stranded over the map after the
  *     sidebar takes over. `onSelect` below closes it explicitly first.
  */
-export default function SampleMarker({ sample, index, isSelected = false, onSelect = null }) {
-  const color = severityToColor(sample.severity);
+export default function SampleMarker({
+  sample,
+  index,
+  isSelected = false,
+  onSelect = null,
+  activeLayer = null,
+}) {
+  const layerKey = activeLayer ?? HEATMAP_LAYER_GENERAL;
+  const color = sesToColor(sampleSesForLayer(sample, layerKey));
 
   // Leaflet churns its internal on/off bookkeeping on every eventHandlers
   // identity change — with the opacity slider re-rendering App on every drag

@@ -56,6 +56,7 @@
   --z-header: 600;
   --z-modal: 700;
   --z-loading: 900;
+  --z-orientation-lock: 1000;
 
   /* Mobile bottom sheet peek height (collapsed) — shared with the
      floating .mobile-sample-actions bar so they stay in sync. */
@@ -1410,6 +1411,23 @@ html, body, #root {
   cursor: not-allowed;
 }
 
+/* Fixed-height reserved band for .align-alert below, so mounting/unmounting
+   the card (or switching between the blocking and caution copy, which are
+   different lengths) never changes .align-overlay's flex layout. Without
+   this, .align-stage — the column's only `flex: 1` child — absorbed the
+   card's height on every appear/disappear, visibly resizing the viewfinder
+   and the framing rectangle inside it while the user was mid-drag. Height is
+   sized to the longest current copy (the blocking overflow body) with a
+   little headroom for device font-scaling; .align-alert fills it via
+   `position: absolute; inset: 0` rather than being measured, so no future
+   copy edit can silently blow this budget — longer text scrolls inside the
+   band instead. */
+.align-alert-slot {
+  position: relative;
+  flex: 0 0 84px;
+  height: 84px;
+}
+
 /* Severity-tiered framing alert — replaces the old single-style
    `.align-warning`, which rendered a blocking overflow, a soft advisory, and
    a hard crop error all as the same faint centered caption (18%-alpha danger
@@ -1419,9 +1437,12 @@ html, body, #root {
    `.align-badge` (over the stage) and `.align-frame.is-*` (the frame
    border), so all three surfaces always agree. Left-aligned with a bold
    title + separate body line, unlike the old centered single line, so it
-   reads as an alert rather than ordinary helper copy. */
+   reads as an alert rather than ordinary helper copy.
+   Absolutely positioned to fill .align-alert-slot above — see that rule for
+   why: this card must never itself be a source of flex-column height. */
 .align-alert {
-  flex-shrink: 0;
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: flex-start;
   gap: var(--space-sm);
@@ -1432,6 +1453,7 @@ html, body, #root {
   border-left-width: 4px;
   text-align: left;
   color: #ffffff;
+  overflow-y: auto;
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -1608,7 +1630,7 @@ html, body, #root {
   .align-controls,
   .align-transform-row,
   .align-actions,
-  .align-alert,
+  .align-alert-slot,
   .align-hint {
     max-width: 480px;
     width: 100%;
@@ -1759,6 +1781,44 @@ html, body, #root {
   text-align: right;
 }
 
+/* ── Heatmap Layer Toggle (General / per-disease) ─────────────
+   Segmented control, same visual language as .btn-tool — wraps onto a
+   second line rather than shrinking below the 48px touch target when three
+   or four layers are present. */
+.layer-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.layer-toggle-btn {
+  flex: 1 1 auto;
+  min-height: 48px;
+  min-width: 48px;
+  padding: 10px var(--space-sm);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: all 0.2s ease;
+}
+
+.layer-toggle-btn:hover {
+  border-color: var(--accent-emerald);
+  color: var(--text-primary);
+}
+
+.layer-toggle-btn--active {
+  background: var(--accent-emerald-glow);
+  border-color: var(--accent-emerald);
+  color: var(--accent-emerald);
+}
+
 /* Custom draft preview pin marker (DraftMarker.jsx) */
 .draft-marker-icon {
   background: none !important;
@@ -1852,6 +1912,33 @@ html, body, #root {
   font-size: 0.65rem;
   color: var(--text-muted);
   font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* Per-disease SES breakdown — DiseaseSesTable in SampleMarker.jsx. Same
+   General-then-per-disease row order as the heatmap layer toggle, so a
+   plant's card reads as "the same layers, at this one point". */
+.popup-ses-table {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0;
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.popup-ses-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: 0.65rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.popup-ses-row--general {
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 /* Compact variant — the Heatmap step's hover tooltip (see .sample-tooltip
@@ -1968,7 +2055,7 @@ html, body, #root {
   border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
   animation: fadeIn 0.4s ease-out;
-  min-width: 120px;
+  min-width: 140px;
 }
 
 .legend-title {
@@ -1981,17 +2068,12 @@ html, body, #root {
   margin-bottom: var(--space-xs);
 }
 
+/* Gradient is set inline (style={{ background }}) from SES_COLORS in
+   constants.js, the single definition of the ramp shared with sesToColor —
+   see ColorLegend.jsx. */
 .legend-gradient {
   height: 12px;
   border-radius: var(--radius-sm);
-  background: linear-gradient(
-    to right,
-    #22c55e,
-    #84cc16,
-    #eab308,
-    #f97316,
-    #ef4444
-  );
   margin-bottom: var(--space-xs);
 }
 
@@ -2000,6 +2082,25 @@ html, body, #root {
   justify-content: space-between;
   font-size: 0.6rem;
   color: var(--text-muted);
+}
+
+/* PDLA breakpoints for the active disease's own SES table — hidden on the
+   General layer, which has none (it's a MAX() of SES classes, not a PDLA
+   band — see ColorLegend.jsx). */
+.legend-pdla-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.55rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.legend-note {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-top: var(--space-xs);
+  line-height: 1.4;
 }
 
 /* ── Sample History Sidebar (Step 3 — Heatmap) ────────────────── */
@@ -2481,5 +2582,72 @@ html, body, #root {
      screen, so it IS effectively modal. */
   .history-backdrop {
     display: none;
+  }
+}
+
+/* ── Orientation Lock ───────────────────────────────────────────
+   The workflow (map + bottom sheet + alignment modal) is designed
+   and tested for portrait phone use only. Rather than maintain a
+   second, mostly-untested landscape layout for every component,
+   block landscape outright on phone-sized viewports and ask the
+   farmer to rotate back. Height-based (not the app's usual
+   768px width breakpoint) because portrait/landscape swap width
+   and height — a phone in landscape reports a *width* like a
+   tablet, but its *height* stays small; tablets/laptops in
+   landscape keep a taller height and are left untouched. */
+.orientation-lock {
+  display: none;
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .orientation-lock {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-orientation-lock);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    padding: var(--space-lg);
+    background: var(--bg-primary);
+    text-align: center;
+  }
+
+  .orientation-lock-icon {
+    width: 56px;
+    height: 56px;
+    color: var(--accent-emerald);
+    animation: orientation-lock-rotate 1.8s ease-in-out infinite;
+  }
+
+  .orientation-lock-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .orientation-lock-body {
+    font-size: 14px;
+    color: var(--text-secondary);
+    max-width: 320px;
+  }
+
+  /* Hide everything else so it can't be reached (scrolled to, tabbed
+     into, or read by a screen reader) while the lock is showing. */
+  .app > *:not(.orientation-lock) {
+    display: none;
+  }
+}
+
+@keyframes orientation-lock-rotate {
+  0%, 20% {
+    transform: rotate(0deg);
+  }
+  50%, 70% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(-90deg);
   }
 }

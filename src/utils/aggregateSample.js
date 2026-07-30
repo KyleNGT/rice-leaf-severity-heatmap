@@ -45,6 +45,22 @@
  * on-screen width, not measured width) and that the farmer aligned the leaf
  * to the stencil by eye; alignment error is unquantified.
  *
+ * Per-disease severities (`diseaseSeverity`, added for the IRRI SES heatmap —
+ * see sesScale.js/sesGrid.js) apply the SAME censoring gate independently to
+ * each disease's own fraction, `classPixels[label] / leafPixels`, rather than
+ * once to their sum. This is deliberate, not an oversight: with per-pixel
+ * argmax, almost every leaf leaks a handful of stray pixels into every class,
+ * so an ungated per-disease value would read as a nonzero PDLA — and
+ * therefore SES 1 — on nearly every plant for nearly every disease it does
+ * NOT have. Gating each disease the way the pooled total is already gated
+ * keeps a healthy plant reading SES 0 on all three layers.
+ *
+ * One consequence worth carrying into the write-up: because each disease is
+ * censored on its OWN fraction, `Σ diseaseSeverity` can be strictly less than
+ * the pooled `severity` above — a disease sitting just under the gate
+ * contributes to the pooled total (which is gated once, on the sum) but
+ * reads 0 on its own layer.
+ *
  * Pure module — no React, no DOM. Runnable directly under `node`.
  */
 
@@ -131,6 +147,7 @@ function standardDeviation(values) {
  *   severity: number|null, diseaseDetected: boolean,
  *   diseaseName: string|null, diseaseLabel: string|null,
  *   leafPixels: number, diseasePixels: number, classPixels: object,
+ *   diseaseSeverity: object, diseaseLabels: string[], diseaseDisplayNames: object,
  *   totalCount: number, usableCount: number, failedCount: number,
  *   flaggedCount: number, analyzingCount: number,
  *   confidenceRange: [number, number]|null,
@@ -148,6 +165,12 @@ export function summarizePlant(images = []) {
     leafPixels: 0,
     diseasePixels: 0,
     classPixels: {},
+    // Per-disease PDLA %, gated independently — see the docblock above.
+    // Keyed by every label in diseaseLabels, so a disease this plant doesn't
+    // have still reads an explicit 0 rather than being absent.
+    diseaseSeverity: {},
+    diseaseLabels: [],
+    diseaseDisplayNames: {},
     totalCount: images.length,
     usableCount: usable.length,
     analyzingCount: images.filter((im) => im?.analyzing).length,
@@ -210,8 +233,13 @@ export function summarizePlant(images = []) {
   // ── Apply the disease gate ONCE, at plant level ──
   // Sourced from the response rather than hardcoded so it stays tied to
   // segfomer_model/deployment_metadata.json and can't drift.
-  const threshold =
-    usable[0].result.diagnostics.minimum_disease_fraction ?? FALLBACK_MIN_DISEASE_FRACTION;
+  const diagnostics = usable[0].result.diagnostics;
+  const diseaseLabels = diagnostics.disease_labels ?? [];
+  const displayNames = diagnostics.disease_display_names ?? {};
+  summary.diseaseLabels = diseaseLabels;
+  summary.diseaseDisplayNames = displayNames;
+
+  const threshold = diagnostics.minimum_disease_fraction ?? FALLBACK_MIN_DISEASE_FRACTION;
 
   const fraction = diseasePixels / leafPixels;
   const detected = fraction >= threshold;
@@ -220,6 +248,21 @@ export function summarizePlant(images = []) {
   summary.severity = detected
     ? Math.round(Math.min(100, Math.max(0, 100 * fraction)) * 100) / 100
     : 0;
+
+  // ── Per-disease severities, gated independently ──
+  // As noted in the docblock, every individual disease fraction is <= the
+  // pooled fraction (classPixels sums to diseasePixels), so when the pooled
+  // gate above fails to clear, every per-disease gate below fails too —
+  // this loop naturally yields all-zeros for a plant read as Healthy.
+  const diseaseSeverity = {};
+  for (const label of diseaseLabels) {
+    const labelFraction = (classPixels[label] ?? 0) / leafPixels;
+    diseaseSeverity[label] =
+      labelFraction >= threshold
+        ? Math.round(Math.min(100, Math.max(0, 100 * labelFraction)) * 100) / 100
+        : 0;
+  }
+  summary.diseaseSeverity = diseaseSeverity;
 
   if (!detected) {
     summary.diseaseName = 'Healthy';
@@ -230,10 +273,6 @@ export function summarizePlant(images = []) {
   // ── Pooled winner: the disease class holding the most leaf pixels ──
   // Label list comes from the response so a re-trained Phase 2 with
   // different classes needs no change here.
-  const diagnostics = usable[0].result.diagnostics;
-  const diseaseLabels = diagnostics.disease_labels ?? [];
-  const displayNames = diagnostics.disease_display_names ?? {};
-
   let winner = null;
   for (const label of diseaseLabels) {
     if (winner === null || (classPixels[label] ?? 0) > (classPixels[winner] ?? 0)) {

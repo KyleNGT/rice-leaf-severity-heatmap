@@ -25,6 +25,9 @@ export default function ActionPanel({
   heatmapOpacity,
   onOpacityChange,
   heatmapData,
+  availableLayers,
+  heatmapLayer,
+  onHeatmapLayerChange,
   // Boundary drawing props
   drawingAction,
   onDrawingActionChange,
@@ -216,6 +219,24 @@ export default function ActionPanel({
       <div className="action-panel">
         <div className="action-card">
           <h3 className="action-title">Disease Pressure Heatmap</h3>
+
+          {/* Layer toggle — hidden when the field has no disease reading at
+              all, in which case General is the only layer there is. */}
+          {heatmapData && availableLayers?.length > 1 && (
+            <div className="layer-toggle" role="group" aria-label="Heatmap layer">
+              {availableLayers.map((layer) => (
+                <button
+                  key={layer.key}
+                  type="button"
+                  className={`layer-toggle-btn ${heatmapLayer === layer.key ? 'layer-toggle-btn--active' : ''}`}
+                  onClick={() => onHeatmapLayerChange(layer.key)}
+                  aria-pressed={heatmapLayer === layer.key}
+                >
+                  {layer.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           {heatmapData && (
             <div className="opacity-control">
