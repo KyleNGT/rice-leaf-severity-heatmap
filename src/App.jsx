@@ -23,6 +23,7 @@ import {
   HEATMAP_DEFAULT_OPACITY,
   HEATMAP_LAYER_GENERAL,
   MAX_SAMPLES,
+  MIN_SAMPLES,
   MAX_IMAGES_PER_SAMPLE,
 } from './constants/constants';
 import './App.css';
@@ -449,6 +450,28 @@ export default function App() {
     [applyDraft]
   );
 
+  // ── TEMPORARY: Tap-to-Set Location (dev/testing only) ───────
+  // Lets a map tap during Sampling set the draft's lat/lng directly,
+  // skipping GPS/EXIF/manual typing, to place test plants faster. Gated by
+  // ENABLE_TAP_TO_SET_LOCATION in MapView; remove this handler, the prop
+  // passed to <MapView>, and that constant together when done testing.
+  const handleMapTapLocation = useCallback(
+    (lat, lng) => {
+      applyDraft((prev) =>
+        prev
+          ? {
+              ...prev,
+              lat: lat.toFixed(6),
+              lng: lng.toFixed(6),
+              locationSource: 'manual',
+              locationError: '',
+            }
+          : prev
+      );
+    },
+    [applyDraft]
+  );
+
   // ── Draft Validity (parsed coords + inside-boundary check) ──
   const draftValidity = useMemo(() => {
     if (!draftSample) return { hasCoords: false, isInside: false, isValid: false };
@@ -519,6 +542,12 @@ export default function App() {
         diseaseSeverity: draftSummary.diseaseSeverity,
         diseaseLabels: draftSummary.diseaseLabels,
         diseaseDisplayNames: draftSummary.diseaseDisplayNames,
+        // Every disease at least one photo was diagnosed with, each with its
+        // own pooled PDLA % and photo count — a rice hill can carry more
+        // than one disease across its tillers, so this is not collapsed to
+        // diseaseName's single dominant label. See aggregateSample.js's
+        // diseaseFindings.
+        diseaseFindings: draftSummary.diseaseFindings,
         // No plant-level confidence is claimed. Each photo's confidence is a
         // mean posterior conditioned on THAT photo's winning class, which may
         // differ from the plant's, so combining them yields a number with no
@@ -529,8 +558,12 @@ export default function App() {
         images: draft.images.map((image, index) => ({
           id: image.id,
           thumbnail: thumbs[index].thumbnail,
+          // Each photo's one diagnosis: its whole PDLA, labeled with its
+          // dominant disease. See aggregateSample.js's photoDiagnosis — the
+          // plant-level diseaseFindings above is these grouped and pooled.
           severity: image.result?.status === 'ok' ? image.result.severity : null,
           diseaseName: image.result?.status === 'ok' ? image.result.diseaseName : null,
+          diseaseLabel: image.result?.status === 'ok' ? image.result.diseaseLabel : null,
           confidence: image.result?.confidence ?? null,
           usable: isUsableImage(image),
         })),
@@ -562,7 +595,7 @@ export default function App() {
 
   // ── Heatmap Generation ─────────────────────────────────────
   const handleGenerateHeatmap = useCallback(async () => {
-    if (samples.length < 2 || !boundary) return;
+    if (samples.length < MIN_SAMPLES || !boundary) return;
 
     setIsProcessing(true);
     setLoadingMessage('Computing disease pressure map...');
@@ -813,6 +846,7 @@ export default function App() {
                 desktopDrawerRef={desktopDrawerRef}
                 selection={selection}
                 onSampleSelect={handleSampleSelect}
+                onMapTapLocation={handleMapTapLocation}
               />
 
               {/* Center-anchored crosshair — mobile boundary drawing only */}
@@ -865,11 +899,11 @@ export default function App() {
                 <button
                   type="button"
                   className="upload-btn-generate"
-                  disabled={samples.length < 2}
+                  disabled={samples.length < MIN_SAMPLES}
                   onClick={handleGenerateHeatmap}
                 >
-                  {samples.length < 2
-                    ? `Need at least 2 plants (${samples.length}/2)`
+                  {samples.length < MIN_SAMPLES
+                    ? `Need at least ${MIN_SAMPLES} plants (${samples.length}/${MIN_SAMPLES})`
                     : `Generate Heatmap (${samples.length} plants)`}
                 </button>
               </div>
@@ -896,11 +930,11 @@ export default function App() {
             <button
               type="button"
               className="upload-btn-generate"
-              disabled={samples.length < 2}
+              disabled={samples.length < MIN_SAMPLES}
               onClick={handleGenerateHeatmap}
             >
-              {samples.length < 2
-                ? `Need at least 2 plants (${samples.length}/2)`
+              {samples.length < MIN_SAMPLES
+                ? `Need at least ${MIN_SAMPLES} plants (${samples.length}/${MIN_SAMPLES})`
                 : `Generate Heatmap (${samples.length} plants)`}
             </button>
           </div>
@@ -951,6 +985,8 @@ export default function App() {
         <ColorLegend
           activeLayer={heatmapLayer}
           layerName={availableLayers.find((l) => l.key === heatmapLayer)?.name}
+          availableLayers={availableLayers}
+          onLayerChange={setHeatmapLayer}
         />
       )}
 

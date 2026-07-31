@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react';
-import { leafQualityWarning } from '../utils/aggregateSample';
+import { leafQualityWarning, photoDiagnosis } from '../utils/aggregateSample';
 import { MAX_IMAGES_PER_SAMPLE } from '../constants/constants';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
+import DiseaseFindingsList from './DiseaseFindingsList';
 
 /**
  * ============================================================
@@ -104,10 +105,18 @@ export default function SamplePanel({
   // One tile per photo. Everything about a photo's fate — still working,
   // failed, quality-flagged, or counted — is legible from its own tile, so
   // the farmer can see which shot to retake without reading a summary.
+  //
+  // Each photo carries exactly ONE diagnosis — its whole PDLA, labeled with
+  // its dominant disease, same as the original single-image contract (see
+  // photoDiagnosis in aggregateSample.js). Multi-disease reporting happens
+  // at plant level in plantSummary below, by grouping photos like this one.
   const photoTile = (image, index) => {
     const warning = image.analyzing || image.error ? '' : leafQualityWarning(image.result);
     const flagged = !!warning && !image.dismissedWarning;
-    const severity = image.result?.status === 'ok' ? image.result.severity : null;
+    const isOk = image.result?.status === 'ok';
+    const severity = isOk ? image.result.severity : null;
+    const showDiagnosis = isOk && !flagged;
+    const diagnosis = showDiagnosis ? photoDiagnosis(image.result) : null;
 
     let stateClass = 'is-ok';
     if (image.analyzing) stateClass = 'is-analyzing';
@@ -123,16 +132,23 @@ export default function SamplePanel({
           aria-label={`View photo ${index + 1} full size`}
         >
           <img className="upload-photo" src={image.thumbnail} alt={`Rice leaf photo ${index + 1}`} />
-          <span className="upload-photo-tile-badge">
-            {image.analyzing
-              ? '…'
-              : image.error
-                ? '⚠'
-                : flagged
+          <span className="upload-photo-tile-info">
+            <span className="upload-photo-tile-badge">
+              {image.analyzing
+                ? '…'
+                : image.error
                   ? '⚠'
-                  : severity != null
-                    ? `${severity.toFixed(1)}%`
-                    : '—'}
+                  : flagged
+                    ? '⚠'
+                    : severity != null
+                      ? `${severity.toFixed(1)}%`
+                      : '—'}
+            </span>
+            {showDiagnosis && (
+              <span className="upload-photo-tile-diagnosis">
+                {diagnosis ? diagnosis.displayName : 'Healthy'}
+              </span>
+            )}
           </span>
         </button>
 
@@ -176,19 +192,30 @@ export default function SamplePanel({
 
   // Pooled result for the whole plant. Deliberately shows no aggregate
   // confidence — see the note in App.jsx's handleAddSample.
+  //
+  // Each photo carries one diagnosis (its whole PDLA, labeled with its
+  // dominant disease — see the photo strip above). "Diseases found" and the
+  // breakdown below group photos by that diagnosis and pool them, so a rice
+  // hill carrying Leaf Blast on one tiller and Brown Spot on another shows
+  // both. Because every photo's whole PDLA lands in exactly one disease's
+  // row, the rows sum to "Total affected".
   const plantSummary = summary && (
     <div className="upload-plant-summary">
       <div className="upload-metrics">
         <div className="upload-metric">
-          <span className="upload-metric-label">Status</span>
+          <span className="upload-metric-label">Total affected</span>
           <span className="upload-metric-value">
-            {summary.severity == null ? '—' : summary.diseaseName}
+            {summary.severity == null ? '—' : `${summary.severity.toFixed(1)}%`}
           </span>
         </div>
         <div className="upload-metric">
-          <span className="upload-metric-label">Severity</span>
+          <span className="upload-metric-label">Diseases found</span>
           <span className="upload-metric-value">
-            {summary.severity == null ? '—' : `${summary.severity.toFixed(1)}%`}
+            {summary.severity == null
+              ? '—'
+              : summary.diseaseFindings.length === 0
+                ? 'Healthy'
+                : summary.diseaseFindings.length}
           </span>
         </div>
         <div className="upload-metric">
@@ -198,6 +225,13 @@ export default function SamplePanel({
           </span>
         </div>
       </div>
+
+      {summary.severity != null && (
+        <DiseaseFindingsList
+          findings={summary.diseaseFindings}
+          emptyLabel="Healthy — no photo was diagnosed with a disease"
+        />
+      )}
 
       {summary.analyzingCount > 0 && (
         <p className="upload-analysis-loading">

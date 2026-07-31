@@ -6,9 +6,27 @@
  * prototype. Change values here to tune the entire app.
  */
 
+// ═══════════════════════════════════════════════════════════
+// TEMPORARY — DEV/TESTING ONLY. DELETE BEFORE SHIP.
+// ═══════════════════════════════════════════════════════════
+/**
+ * Lets a tap anywhere on the map set the in-progress draft plant's lat/lng
+ * directly during the Sampling step, skipping GPS/EXIF/manual typing —
+ * purely to place test plants faster. Not a feature the shipped app should
+ * have. Flip to `false` to disable instantly, or strip this constant along
+ * with MapView's `TapToSetLocation` child and App.jsx's
+ * `handleMapTapLocation` once testing is done.
+ */
+export const ENABLE_TAP_TO_SET_LOCATION = true;
+
 // ── Sampling Limits ──────────────────────────────────────────
 /** Max plant nodes (sample points) per field session. */
 export const MAX_SAMPLES = 50;
+
+/** Min plant nodes required before "Generate Heatmap" is enabled. IDW needs
+ * at least 2 points to interpolate a surface — a single sample has no
+ * spatial variation to spread across the field. */
+export const MIN_SAMPLES = 3;
 
 /**
  * Max photos per plant. A node is one rice plant, and a rice leaf is long

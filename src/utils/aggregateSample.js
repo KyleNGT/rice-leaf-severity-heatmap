@@ -1,31 +1,47 @@
 /**
  * ============================================================
- * Plant-Level Aggregation — Pooled PDLA
+ * Plant-Level Aggregation — Per-Photo Dominant-Disease Attribution
  * ============================================================
  * A sample node is one rice plant, photographed several times: a rice leaf
  * is long and thin and often needs more than one frame, and field practice
  * samples several leaves per plant. This module reduces those per-photo
- * inference results to the single severity the IDW grid interpolates.
+ * inference results to the plant-level result the IDW grid interpolates.
  *
- * The severity is POOLED, not averaged:
+ * A rice hill has multiple tillers and leaves — it is biologically normal
+ * for one part to carry Leaf Blast while another carries Brown Spot at the
+ * same node. Each photo already receives ONE diagnosis from the backend
+ * (`diseaseLabel`, its dominant class by pixel count, already gated on that
+ * photo's own disease_fraction — see backend/inference.py). This module
+ * takes that diagnosis at face value: a photo's WHOLE PDLA — every disease
+ * pixel it has, not just its winning class's — is attributed entirely to
+ * its one dominant disease. Photos are then grouped by diagnosis and pooled:
  *
- *     PDLA_plant = 100 × Σ disease_pixels / Σ leaf_pixels
+ *     diseaseSeverity[label] = 100 × Σ disease_pixels (photos diagnosed `label`)
+ *                                    ─────────────────────────────────────────
+ *                                    Σ leaf_pixels (EVERY usable photo)
  *
- * which is the same number the pipeline would report for one composite image
- * of all the tissue photographed at that plant. Three reasons it is not a
- * mean of the per-photo percentages:
+ * The denominator is the plant's WHOLE leaf area, not just that disease's own
+ * photos — so a per-disease value answers "how much of this plant is Brown
+ * Spot", not "how bad is the Brown Spot where we found it". A photo diagnosed
+ * Healthy contributes its leaf area to every denominator but zero to any
+ * numerator. Consequence: since every photo's whole PDLA lands in exactly one
+ * disease's numerator over one shared denominator, the per-disease values sum
+ * EXACTLY to the pooled plant `severity` (barring independent 2dp rounding of
+ * each). This replaces the old model, which pooled raw per-CLASS pixel counts
+ * across every photo regardless of that photo's own diagnosis — a leaf_blast
+ * photo's stray brown_spot argmax pixels used to count toward brown_spot's
+ * total even though the photo was never diagnosed with it, which both diluted
+ * per-disease values against leaf area they had nothing to do with, and
+ * required an independent per-disease censoring gate to suppress that
+ * leakage. Neither problem exists once each photo's pixels stay bound to its
+ * own single diagnosis, so there is no separate per-disease gate here — each
+ * photo was already censored once, by the backend, before it ever reports a
+ * non-null diagnosis.
  *
- *   1. PDLA is a ratio of two counts. A mean of ratios is not the ratio of
- *      sums — a tight close-up of one lesion (4k leaf px, 50%) would weigh
- *      exactly as much as a wide shot of near-clean tissue (200k leaf px,
- *      1%). Pooling weights each photo by the leaf area it actually captured.
- *   2. `severity` is censored. backend/inference.py forces it to 0 whenever
- *      disease_fraction < minimum_disease_fraction, so averaging it
- *      under-reports a plant whose leaves are each lightly affected. We pool
- *      the raw counts and apply that gate once, at plant level.
- *   3. `diseaseName` is categorical and cannot be averaged at all; the
- *      pooled winner is the disease class holding the most leaf pixels
- *      across the plant.
+ * Combining is by POOLING PIXELS, not averaging percentages: a photo
+ * capturing more leaf area carries proportionally more weight. A close-up
+ * lesion (4k leaf px) does not weigh the same as a wide shot of the same
+ * disease (200k leaf px) just because both are "one photo".
  *
  * Every photo, camera or gallery, is now forced through a fixed alignment
  * crop before it ever reaches analysis (ImageAlignmentModal → cropToStencil.js)
@@ -45,21 +61,13 @@
  * on-screen width, not measured width) and that the farmer aligned the leaf
  * to the stencil by eye; alignment error is unquantified.
  *
- * Per-disease severities (`diseaseSeverity`, added for the IRRI SES heatmap —
- * see sesScale.js/sesGrid.js) apply the SAME censoring gate independently to
- * each disease's own fraction, `classPixels[label] / leafPixels`, rather than
- * once to their sum. This is deliberate, not an oversight: with per-pixel
- * argmax, almost every leaf leaks a handful of stray pixels into every class,
- * so an ungated per-disease value would read as a nonzero PDLA — and
- * therefore SES 1 — on nearly every plant for nearly every disease it does
- * NOT have. Gating each disease the way the pooled total is already gated
- * keeps a healthy plant reading SES 0 on all three layers.
- *
- * One consequence worth carrying into the write-up: because each disease is
- * censored on its OWN fraction, `Σ diseaseSeverity` can be strictly less than
- * the pooled `severity` above — a disease sitting just under the gate
- * contributes to the pooled total (which is gated once, on the sum) but
- * reads 0 on its own layer.
+ * `diseaseFindings` is the labeled, multi-disease list the sampling screen
+ * renders: every disease at least one photo was diagnosed with, each with
+ * its own pooled PDLA % and the count of photos behind it, sorted descending
+ * — so a plant is never forced down to a single winning disease name for
+ * display. `photoDiagnosis`, below, is the same one-disease-per-photo idea
+ * applied to a single photo in isolation, for the per-tile display: the
+ * photo's whole PDLA, labeled with its one dominant diagnosis.
  *
  * Pure module — no React, no DOM. Runnable directly under `node`.
  */
@@ -73,9 +81,6 @@ import {
   MAX_LEAF_FRAME_FRACTION,
   MIN_LEAF_MASK_CONFIDENCE,
 } from '../constants/constants.js';
-
-/** Fallback if a response predates the backend sending its own gate value. */
-const FALLBACK_MIN_DISEASE_FRACTION = 0.001;
 
 /**
  * Why a photo's leaf mask looks implausible, or '' if it looks fine.
@@ -130,6 +135,34 @@ export function isUsableImage(image) {
   return true;
 }
 
+/**
+ * One photo's single diagnosis — its WHOLE PDLA, labeled with its one
+ * dominant disease, exactly as the backend already computed it. No
+ * per-disease breakdown at photo scale: a photo is one diagnosis, same as
+ * the original single-image contract. Multi-disease reporting happens at
+ * plant level, by grouping photos like this one — see the module docblock.
+ *
+ * @param {object|null} result — a raw /api/analyze response.
+ * @returns {{label: string, displayName: string, pdla: number}|null} — null
+ *   for anything that isn't a successful, DETECTED leaf photo: a failed
+ *   request, `status: 'no_leaf_detected'`, or a photo the backend itself
+ *   gated as Healthy (`diseaseLabel: 'healthy_leaf'` / `null`).
+ */
+export function photoDiagnosis(result) {
+  if (!result || result.status !== 'ok') return null;
+  if (!result.diseaseDetected) return null;
+
+  const label = result.diseaseLabel;
+  if (!label || label === 'healthy_leaf') return null;
+
+  const displayNames = result.diagnostics?.disease_display_names ?? {};
+  return {
+    label,
+    displayName: displayNames[label] ?? result.diseaseName ?? label,
+    pdla: result.severity,
+  };
+}
+
 function standardDeviation(values) {
   if (values.length < 2) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
@@ -148,6 +181,8 @@ function standardDeviation(values) {
  *   diseaseName: string|null, diseaseLabel: string|null,
  *   leafPixels: number, diseasePixels: number, classPixels: object,
  *   diseaseSeverity: object, diseaseLabels: string[], diseaseDisplayNames: object,
+ *   diseaseFindings: Array<{label: string, displayName: string, pdla: number,
+ *                           photoCount: number}>,
  *   totalCount: number, usableCount: number, failedCount: number,
  *   flaggedCount: number, analyzingCount: number,
  *   confidenceRange: [number, number]|null,
@@ -160,17 +195,32 @@ export function summarizePlant(images = []) {
   const summary = {
     severity: null,
     diseaseDetected: false,
+    // The DOMINANT disease — the highest-pooled diseaseFindings entry — kept
+    // for display sites that need one headline label (history row title,
+    // marker popup fallback). It is NOT the only disease the plant may have;
+    // see diseaseFindings below for the full labeled breakdown.
     diseaseName: null,
     diseaseLabel: null,
     leafPixels: 0,
+    // Pooled disease pixel count from DIAGNOSED photos only — see the module
+    // docblock. A photo the backend gated as Healthy contributes its leaf
+    // area to leafPixels above but nothing here.
     diseasePixels: 0,
+    // Raw per-class pixel counts pooled across every usable photo,
+    // regardless of that photo's own diagnosis. Provenance only (write-up) —
+    // NOT what diseaseSeverity is computed from; see the module docblock.
     classPixels: {},
-    // Per-disease PDLA %, gated independently — see the docblock above.
+    // Per-disease PDLA %, one photo's whole PDLA per its one diagnosis,
+    // pooled over the plant's WHOLE leaf area — see the module docblock.
     // Keyed by every label in diseaseLabels, so a disease this plant doesn't
     // have still reads an explicit 0 rather than being absent.
     diseaseSeverity: {},
     diseaseLabels: [],
     diseaseDisplayNames: {},
+    // Every disease at least one photo was diagnosed with, each with its own
+    // pooled PDLA % and the photo count behind it, sorted descending. Derived
+    // from diseaseSeverity (same numbers), so the two can never disagree.
+    diseaseFindings: [],
     totalCount: images.length,
     usableCount: usable.length,
     analyzingCount: images.filter((im) => im?.analyzing).length,
@@ -186,17 +236,18 @@ export function summarizePlant(images = []) {
 
   if (usable.length === 0) return summary;
 
-  // ── Pool the raw pixel counts ──
+  // ── Pool leaf area, raw class pixels (provenance), spread, confidence ──
+  // leafPixels is the SHARED denominator every disease's severity divides
+  // by — see the module docblock for why the denominator is the plant's
+  // whole leaf area, not just that disease's own photos.
   const classPixels = {};
   let leafPixels = 0;
-  let diseasePixels = 0;
   const perPhotoPdla = [];
   const confidences = [];
 
   for (const image of usable) {
     const d = image.result.diagnostics;
     leafPixels += d.leaf_pixels ?? 0;
-    diseasePixels += d.disease_pixels ?? 0;
 
     for (const [label, count] of Object.entries(d.class_pixels ?? {})) {
       classPixels[label] = (classPixels[label] ?? 0) + count;
@@ -210,7 +261,6 @@ export function summarizePlant(images = []) {
   }
 
   summary.leafPixels = leafPixels;
-  summary.diseasePixels = diseasePixels;
   summary.classPixels = classPixels;
 
   if (confidences.length > 0) {
@@ -230,7 +280,6 @@ export function summarizePlant(images = []) {
   // "healthy" node over what may be a real hotspot.
   if (leafPixels === 0) return summary;
 
-  // ── Apply the disease gate ONCE, at plant level ──
   // Sourced from the response rather than hardcoded so it stays tied to
   // segfomer_model/deployment_metadata.json and can't drift.
   const diagnostics = usable[0].result.diagnostics;
@@ -239,52 +288,69 @@ export function summarizePlant(images = []) {
   summary.diseaseLabels = diseaseLabels;
   summary.diseaseDisplayNames = displayNames;
 
-  const threshold = diagnostics.minimum_disease_fraction ?? FALLBACK_MIN_DISEASE_FRACTION;
+  // ── Group each photo's WHOLE disease-pixel count under its OWN single
+  // diagnosis ── A photo only joins a group if the backend itself diagnosed
+  // it with a real disease (already gated on that photo's own
+  // disease_fraction); a photo the backend read as Healthy joins no group —
+  // its leaf area still counted toward leafPixels above, but it contributes
+  // zero disease pixels anywhere. No re-gating happens here; see the module
+  // docblock for why a second, plant-level gate would be wrong.
+  const groups = {};
+  for (const image of usable) {
+    const r = image.result;
+    if (!r.diseaseDetected) continue;
+    const label = r.diseaseLabel;
+    if (!label || label === 'healthy_leaf' || !diseaseLabels.includes(label)) continue;
 
-  const fraction = diseasePixels / leafPixels;
-  const detected = fraction >= threshold;
+    if (!groups[label]) groups[label] = { diseasePixels: 0, photoCount: 0 };
+    groups[label].diseasePixels += r.diagnostics.disease_pixels ?? 0;
+    groups[label].photoCount += 1;
+  }
 
-  summary.diseaseDetected = detected;
-  summary.severity = detected
-    ? Math.round(Math.min(100, Math.max(0, 100 * fraction)) * 100) / 100
-    : 0;
-
-  // ── Per-disease severities, gated independently ──
-  // As noted in the docblock, every individual disease fraction is <= the
-  // pooled fraction (classPixels sums to diseasePixels), so when the pooled
-  // gate above fails to clear, every per-disease gate below fails too —
-  // this loop naturally yields all-zeros for a plant read as Healthy.
+  // ── Pool pixels within each group over the plant's WHOLE leaf area ──
   const diseaseSeverity = {};
   for (const label of diseaseLabels) {
-    const labelFraction = (classPixels[label] ?? 0) / leafPixels;
-    diseaseSeverity[label] =
-      labelFraction >= threshold
-        ? Math.round(Math.min(100, Math.max(0, 100 * labelFraction)) * 100) / 100
-        : 0;
+    const g = groups[label];
+    diseaseSeverity[label] = g
+      ? Math.round(Math.min(100, Math.max(0, 100 * g.diseasePixels / leafPixels)) * 100) / 100
+      : 0;
   }
   summary.diseaseSeverity = diseaseSeverity;
 
-  if (!detected) {
+  // Plant total: every diagnosed photo's disease pixels, same shared
+  // denominator — since every photo's whole PDLA lands in exactly one
+  // group, this equals Σ diseaseSeverity (each independently rounded to
+  // 2dp, so the two can differ in the 2nd decimal but agree at 1dp display).
+  const pooledDiseasePixels = Object.values(groups).reduce((sum, g) => sum + g.diseasePixels, 0);
+  summary.diseasePixels = pooledDiseasePixels;
+  summary.diseaseDetected = pooledDiseasePixels > 0;
+  summary.severity =
+    Math.round(Math.min(100, Math.max(0, 100 * pooledDiseasePixels / leafPixels)) * 100) / 100;
+
+  // ── Labeled multi-disease breakdown ──
+  // Every disease at least one photo was diagnosed with, as its own row —
+  // this is what lets a plant with a leaf-blast photo AND a brown-spot photo
+  // show both, instead of collapsing to whichever holds more pixels.
+  summary.diseaseFindings = diseaseLabels
+    .filter((label) => diseaseSeverity[label] > 0)
+    .map((label) => ({
+      label,
+      displayName: displayNames[label] ?? label,
+      pdla: diseaseSeverity[label],
+      photoCount: groups[label].photoCount,
+    }))
+    .sort((a, b) => b.pdla - a.pdla);
+
+  if (summary.diseaseFindings.length === 0) {
     summary.diseaseName = 'Healthy';
     summary.diseaseLabel = 'healthy_leaf';
     return summary;
   }
 
-  // ── Pooled winner: the disease class holding the most leaf pixels ──
-  // Label list comes from the response so a re-trained Phase 2 with
-  // different classes needs no change here.
-  let winner = null;
-  for (const label of diseaseLabels) {
-    if (winner === null || (classPixels[label] ?? 0) > (classPixels[winner] ?? 0)) {
-      winner = label;
-    }
-  }
-
-  // The backend breaks an exact pixel tie on mean posterior; we break it on
-  // disease_labels order. Only observable when two classes hold precisely
-  // the same pixel count, which the display rounding hides anyway.
-  summary.diseaseLabel = winner;
-  summary.diseaseName = winner ? (displayNames[winner] ?? winner) : null;
+  // ── Dominant label: the highest-pooled finding ──
+  const winner = summary.diseaseFindings[0];
+  summary.diseaseLabel = winner.label;
+  summary.diseaseName = winner.displayName;
 
   return summary;
 }

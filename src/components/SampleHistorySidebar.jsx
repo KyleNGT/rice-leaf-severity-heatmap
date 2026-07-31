@@ -2,6 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { sesToColor, sampleSesForLayer } from '../utils/sesScale';
 import { HEATMAP_LAYER_GENERAL } from '../constants/constants';
 
+/** Plant row headline: every disease this plant carries, comma-joined —
+ * never just the dominant one. Falls back to diseaseName for any record
+ * committed before diseaseFindings existed. */
+function plantDiseaseSummary(sample) {
+  const findings = sample.diseaseFindings;
+  if (!findings) return sample.diseaseName;
+  if (findings.length === 0) return 'Healthy';
+  return findings.map((f) => f.displayName).join(', ');
+}
+
 const LOCATION_SOURCE_LABEL = {
   gps: 'GPS',
   exif: 'From photo',
@@ -194,7 +204,7 @@ export default function SampleHistorySidebar({ samples, selection, onFocusOnMap,
                       </span>
                     </span>
                     <span className="history-plant-meta">
-                      {sample.diseaseName}
+                      {plantDiseaseSummary(sample)}
                       {' · '}
                       {sample.usableImageCount ?? photos.length} of{' '}
                       {sample.imageCount ?? photos.length}{' '}

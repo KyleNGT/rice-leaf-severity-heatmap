@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, CircleMarker } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   DEFAULT_CENTER,
@@ -10,6 +10,7 @@ import {
   ESRI_MAX_NATIVE_ZOOM,
   HISTORY_SIDEBAR_OFFSET_PX,
   STEPS,
+  ENABLE_TAP_TO_SET_LOCATION,
 } from '../constants/constants';
 import BoundaryDrawer from './BoundaryDrawer';
 import MobileBoundaryDrawer from './MobileBoundaryDrawer';
@@ -18,6 +19,22 @@ import SampleMarker from './SampleMarker';
 import HeatmapOverlay from './HeatmapOverlay';
 import DraftMarker from './DraftMarker';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
+
+/**
+ * TEMPORARY — dev/testing only. Lets a tap anywhere on the map set the
+ * in-progress draft plant's lat/lng directly during Sampling, skipping
+ * GPS/EXIF/manual typing. Gated by ENABLE_TAP_TO_SET_LOCATION; delete this
+ * component (and its call site below) together with that constant and
+ * App.jsx's handleMapTapLocation once done testing.
+ */
+function TapToSetLocation({ onTap }) {
+  useMapEvents({
+    click(e) {
+      onTap(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
+}
 
 /**
  * ============================================================
@@ -51,6 +68,7 @@ export default function MapView({
   desktopDrawerRef,
   selection,
   onSampleSelect,
+  onMapTapLocation,
 }) {
   const [center, setCenter] = useState(DEFAULT_CENTER);
   const [isLocating, setIsLocating] = useState(true);
@@ -188,6 +206,11 @@ export default function MapView({
           boundary={boundary}
           opacity={heatmapOpacity}
         />
+      )}
+
+      {/* TEMPORARY — dev/testing only, see TapToSetLocation above */}
+      {ENABLE_TAP_TO_SET_LOCATION && currentStep === STEPS.SAMPLING && (
+        <TapToSetLocation onTap={onMapTapLocation} />
       )}
 
       {/* Live preview pin for the in-progress draft sample */}

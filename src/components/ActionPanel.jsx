@@ -220,9 +220,12 @@ export default function ActionPanel({
         <div className="action-card">
           <h3 className="action-title">Disease Pressure Heatmap</h3>
 
-          {/* Layer toggle — hidden when the field has no disease reading at
-              all, in which case General is the only layer there is. */}
-          {heatmapData && availableLayers?.length > 1 && (
+          {/* Layer toggle — mobile only. On desktop this same control lives
+              on ColorLegend instead, since it was eating most of this
+              card's height and blocking the map underneath it. Hidden
+              entirely when the field has no disease reading at all, in
+              which case General is the only layer there is. */}
+          {heatmapData && availableLayers?.length > 1 && isMobile && (
             <div className="layer-toggle" role="group" aria-label="Heatmap layer">
               {availableLayers.map((layer) => (
                 <button

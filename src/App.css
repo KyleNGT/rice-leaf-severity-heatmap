@@ -879,6 +879,66 @@ html, body, #root {
   font-style: italic;
 }
 
+/* Labeled multi-disease breakdown (DiseaseFindingsList) — plant-level only,
+   one row per disease at least one photo was diagnosed with, so a plant
+   carrying more than one disease across its tillers shows every one of
+   them, not just the dominant label. Each photo itself still shows one
+   plain-text diagnosis at its own tile — see SamplePanel's photo strip.
+   Uses the global --text-* and --border-subtle tokens rather than the
+   --upload-* ones so the same rule also reads correctly if this list is
+   ever placed outside .upload-panel/.sheet; the two token sets happen to
+   share the same hex values. */
+.disease-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-xs) 0;
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.disease-findings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.disease-findings-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.disease-findings-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+}
+
+.disease-findings-count {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.disease-findings-value {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.disease-findings-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
 /* ── Photo Strip (Step 2 — the photos of one plant) ──────────── */
 /* Laid out as a vertical list rather than a horizontal carousel so each
    photo's warning and its Retry/Use-anyway actions stay attached to the
@@ -949,11 +1009,29 @@ html, body, #root {
   border-radius: var(--radius-sm);
 }
 
+/* Severity badge + this photo's one dominant diagnosis, stacked — a photo
+   is one diagnosis, same as the original single-image contract. Any
+   multi-disease breakdown lives at plant level in .upload-plant-summary. */
+.upload-photo-tile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
 .upload-photo-tile-badge {
   font-family: 'SF Mono', 'SFMono-Regular', ui-monospace, Menlo, monospace;
   font-size: 14px;
   font-weight: 700;
   color: var(--upload-emerald);
+}
+
+.upload-photo-tile-diagnosis {
+  font-size: 12px;
+  color: var(--upload-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .is-analyzing .upload-photo-tile-badge {
@@ -1984,7 +2062,12 @@ html, body, #root {
 
 .sample-tooltip .popup-content {
   padding: var(--space-sm);
-  max-width: 220px;
+  /* Wider than .sample-popup's implicit ~300px (Leaflet's default
+     maxWidth on .leaflet-popup-content) on purpose — this card has no
+     close button and no click-to-dismiss, so it reads better with a bit
+     more breathing room than the popup gets. */
+  min-width: 260px;
+  max-width: 360px;
 }
 
 .sample-tooltip.leaflet-tooltip-top::before {
@@ -2055,7 +2138,46 @@ html, body, #root {
   border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
   animation: fadeIn 0.4s ease-out;
-  min-width: 140px;
+  width: 200px;
+}
+
+/* Disease layer filter — desktop only, see ColorLegend.jsx. Sits below the
+   gradient scale, collapsed into a dropdown so it fits a top-right floating
+   card instead of a full-width bottom panel. */
+.legend-layer-toggle {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.legend-layer-toggle-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.legend-layer-toggle-select {
+  width: 100%;
+  padding: 6px var(--space-sm);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.legend-layer-toggle-select:hover,
+.legend-layer-toggle-select:focus {
+  border-color: var(--accent-emerald);
+  outline: none;
 }
 
 .legend-title {

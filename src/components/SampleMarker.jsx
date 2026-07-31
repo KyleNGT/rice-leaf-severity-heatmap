@@ -78,7 +78,13 @@ function SampleSummary({ sample, index, color, compact = false }) {
       )}
       <div className="popup-info">
         <span className="popup-label">Plant #{index + 1}</span>
-        <span className="popup-disease">{sample.diseaseName}</span>
+        <span className="popup-disease">
+          {sample.diseaseFindings
+            ? sample.diseaseFindings.length === 0
+              ? 'Healthy'
+              : sample.diseaseFindings.map((f) => f.displayName).join(', ')
+            : sample.diseaseName}
+        </span>
         <span className="popup-severity" style={{ color }}>
           Severity: {sample.severity.toFixed(1)}%
         </span>
