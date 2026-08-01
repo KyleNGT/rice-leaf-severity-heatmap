@@ -97,6 +97,29 @@ npm run preview   # Preview the production build locally
 npm run lint       # Run oxlint
 ```
 
+## Deploying the front end (e.g. Vercel) with a remote backend
+
+The front end can be deployed on its own (Vercel, Netlify, etc.), but the inference backend cannot — Vercel's Python Serverless Functions cap at 250 MB unzipped, and `torch` alone is close to that before `transformers`, Pillow, and the ~100 MB of SegFormer weights are even counted. The backend has to run somewhere else, and the deployed front end has to be told where.
+
+**1. Run the backend somewhere reachable.** For free testing with no cloud account, run it on your own machine as usual (`npm run dev:api`) and expose it with a free [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/):
+
+```bash
+brew install cloudflared        # or see Cloudflare's docs for other platforms
+cloudflared tunnel --url http://localhost:8000
+```
+
+This prints an HTTPS URL like `https://some-random-words.trycloudflare.com`. Verify it directly:
+
+```bash
+curl https://some-random-words.trycloudflare.com/api/health
+```
+
+The tunnel only exists while both `npm run dev:api` and `cloudflared` are running, and a quick tunnel's URL changes every time it's restarted — fine for testing or a live demo, not for something that needs to stay up unattended. For an always-on host later, see `.env.example` and the deploy notes in `CLAUDE.md`.
+
+**2. Point the deployed front end at it.** Set `VITE_API_BASE_URL` (see `.env.example`) to that URL in your hosting provider's environment variables — for Vercel: Project → Settings → Environment Variables. Vite inlines this at build time, so changing it requires a fresh build/redeploy, not just a refresh.
+
+Local dev needs no configuration — leave `VITE_API_BASE_URL` unset and the app keeps using `vite.config.js`'s dev-only proxy to `localhost:8000`, exactly as described in Setup above.
+
 ## Project structure
 
 ```

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import * as turf from '@turf/turf';
 import MapView from './components/MapView';
 import StepperBar from './components/StepperBar';
@@ -14,7 +14,7 @@ import { useExifGps } from './hooks/useExifGps';
 import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
 import { useAlignmentQueue } from './hooks/useAlignmentQueue';
-import { analyzePlantImage } from './services/mockMLService';
+import { analyzePlantImage, checkBackendHealth } from './services/mockMLService';
 import { computeIDW } from './utils/idwInterpolation';
 import { summarizePlant, isUsableImage } from './utils/aggregateSample';
 import { makeThumbnails } from './utils/makeThumbnail';
@@ -79,6 +79,11 @@ export default function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(null);
+
+  // 'unknown' (not checked yet / passed) | 'checking' | 'unreachable'. Only
+  // ever used to show a banner — analyzePlantImage still runs its own
+  // real check per photo, so a stale 'unknown' here can't hide a failure.
+  const [backendStatus, setBackendStatus] = useState('unknown');
 
   // ── Draft Sample State ──────────────────────────────────────
   // An in-progress PLANT being staged in the SamplePanel before the user
@@ -189,6 +194,25 @@ export default function App() {
       setCurrentStep(STEPS.SAMPLING);
     }
   }, [boundary]);
+
+  // Probe the backend the moment Sampling becomes the active step, rather
+  // than waiting for the farmer's first photo to burn a full
+  // ANALYZE_TIMEOUT_MS discovering it's unreachable. Keyed on currentStep
+  // alone (NOT backendStatus — setting that inside would retrigger this
+  // effect and loop) so it fires once per entry into the step, including
+  // re-entries after resuming a paused session. This is advisory only:
+  // analyzePlantImage still runs its own real check on every photo.
+  useEffect(() => {
+    if (currentStep !== STEPS.SAMPLING) return;
+    let cancelled = false;
+    setBackendStatus('checking');
+    checkBackendHealth().then((healthy) => {
+      if (!cancelled) setBackendStatus(healthy ? 'ok' : 'unreachable');
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep]);
 
   // ── Draft Mutation ──────────────────────────────────────────
   // Every write to the draft goes through applyDraft, and draftRef is the
@@ -871,6 +895,7 @@ export default function App() {
             disabled={isProcessing}
             isMaxed={samples.length >= MAX_SAMPLES}
             isImagesMaxed={isImagesMaxed}
+            backendStatus={backendStatus}
           />
         )}
 
@@ -1012,6 +1037,7 @@ export default function App() {
             disabled={isProcessing}
             isMaxed={samples.length >= MAX_SAMPLES}
             isImagesMaxed={isImagesMaxed}
+            backendStatus={backendStatus}
           />
         </>
       )}

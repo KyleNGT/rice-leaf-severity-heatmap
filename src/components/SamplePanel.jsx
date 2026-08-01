@@ -55,6 +55,7 @@ export default function SamplePanel({
   disabled,
   isMaxed,
   isImagesMaxed,
+  backendStatus = 'unknown',
   bare = false,
 }) {
   const cameraRef = useRef(null);
@@ -326,6 +327,13 @@ export default function SamplePanel({
         style={{ display: 'none' }}
         onChange={handleFileChange('gallery')}
       />
+
+      {backendStatus === 'unreachable' && (
+        <p className="upload-warning">
+          ⚠ Cannot reach the analysis server right now. Photos can still be added, but
+          analysis will fail until it's back — try again in a moment.
+        </p>
+      )}
 
       {!draft && (
         <>

@@ -374,14 +374,35 @@ export const GEO_TIMEOUT_MS = 10000;
 
 // ── ML Inference API ─────────────────────────────────────────
 /**
- * SegFormer 2-stage inference endpoint (backend/server.py). In dev,
- * Vite proxies this relative path to the FastAPI server — see
- * vite.config.js's server.proxy. Real inference is slower than the
- * mock's fake 1.5–2.5s delay, especially on CPU, hence the longer
- * timeout below.
+ * Base origin for the inference API (backend/server.py). Empty by default,
+ * so ANALYZE_ENDPOINT/HEALTH_ENDPOINT stay the bare relative paths that
+ * vite.config.js's server.proxy forwards to localhost:8000 in dev.
+ *
+ * That proxy is dev-only — it has no effect on a `vite build` output, so a
+ * deployed build (e.g. on Vercel) has no way to reach the backend unless
+ * this is set. Set VITE_API_BASE_URL in the hosting provider's environment
+ * variables to the backend's public origin (e.g. a Cloudflare Tunnel URL
+ * while testing, or a container host's URL later). Trailing slashes are
+ * stripped so '<url>/' and '<url>' behave the same.
  */
-export const ANALYZE_ENDPOINT = '/api/analyze';
-export const ANALYZE_TIMEOUT_MS = 30000;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+
+/**
+ * SegFormer 2-stage inference endpoint. Real inference is slower than the
+ * old mock's fake 1.5–2.5s delay, especially on CPU, hence the long timeout
+ * below — a remote backend adds network latency on top, plus a possible
+ * cold-start model load if the host scales to zero.
+ */
+export const ANALYZE_ENDPOINT = `${API_BASE_URL}/api/analyze`;
+
+/**
+ * Lets the front end distinguish "backend unreachable" from "backend
+ * reachable but inference failed" before the user ever takes a photo — see
+ * checkBackendHealth() in mockMLService.js and its call site in App.jsx.
+ */
+export const HEALTH_ENDPOINT = `${API_BASE_URL}/api/health`;
+
+export const ANALYZE_TIMEOUT_MS = 60000;
 
 // ── IRRI Standard Evaluation System (SES) Scales ────────────
 /**

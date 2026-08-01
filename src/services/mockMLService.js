@@ -13,7 +13,12 @@
  * integer — display sites round it with .toFixed(1).
  */
 
-import { ANALYZE_ENDPOINT, ANALYZE_TIMEOUT_MS } from '../constants/constants';
+import { ANALYZE_ENDPOINT, ANALYZE_TIMEOUT_MS, HEALTH_ENDPOINT } from '../constants/constants';
+
+/** Short timeout for the health probe — it exists to fail fast, not to wait
+ * out a real inference. A generous value would defeat the point of calling
+ * it before the farmer ever takes a photo. */
+const HEALTH_TIMEOUT_MS = 8000;
 
 /**
  * Tail of the request queue. `analyzePlantImage` chains onto this so only
@@ -99,8 +104,13 @@ async function sendForAnalysis(imageFile) {
     // JSON `detail` and is handled below), so it gets its own message
     // instead of a bare status code.
     if ([502, 503, 504].includes(res.status)) {
+      // import.meta.env.DEV is a Vite build-time constant, so this branch
+      // compiles away entirely in a production bundle — a deployed build
+      // never ships the dev-only instruction below.
       throw new Error(
-        'Cannot reach the analysis server. Make sure the backend is running (npm run dev:api).'
+        import.meta.env.DEV
+          ? 'Cannot reach the analysis server. Make sure the backend is running (npm run dev:api).'
+          : 'The analysis server is unavailable. Please try again in a moment.'
       );
     }
 
@@ -114,4 +124,27 @@ async function sendForAnalysis(imageFile) {
   }
 
   return res.json();
+}
+
+/**
+ * Probe GET /api/health before the farmer takes a single photo — lets the
+ * Sampling step show "backend unreachable" up front instead of only
+ * discovering it after a photo burns the full ANALYZE_TIMEOUT_MS. Also
+ * doubles as a wake-up call to a scale-to-zero host, which is what keeps
+ * the first real analyze() call inside its own timeout budget.
+ *
+ * Deliberately outside the analyze queue (`queueTail`) — a health probe
+ * has nothing to do with photo ordering and must never wait behind one.
+ *
+ * @returns {Promise<boolean>} true if the backend answered healthy.
+ */
+export async function checkBackendHealth() {
+  try {
+    const res = await fetch(HEALTH_ENDPOINT, {
+      signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

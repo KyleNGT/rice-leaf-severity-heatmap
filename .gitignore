@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Env files. *.local above already covers .env.local / .env.*.local (Vite's
+# own convention); .env itself needs its own line. .env.example is
+# intentionally NOT ignored — it's checked in as documentation.
+.env
+
 # Python backend
 backend/.venv
 backend/__pycache__
