@@ -36,6 +36,8 @@ export default function ActionPanel({
   onUndoPoint,
   onFinishShape,
   onUndoVertex,
+  onExportReport,
+  isProcessing,
 }) {
   const isMobile = useIsMobileViewport();
 
@@ -265,6 +267,17 @@ export default function ActionPanel({
           >
             ＋ Add More Samples
           </button>
+
+          {heatmapData && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-full"
+              onClick={onExportReport}
+              disabled={isProcessing}
+            >
+              ↓ Export PDF Report
+            </button>
+          )}
 
           <button
             className="btn btn-secondary btn-full"

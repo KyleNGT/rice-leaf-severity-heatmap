@@ -19,6 +19,7 @@ import { computeIDW } from './utils/idwInterpolation';
 import { summarizePlant, isUsableImage } from './utils/aggregateSample';
 import { makeThumbnails } from './utils/makeThumbnail';
 import { pdlaGridToSes, maxSesGrid } from './utils/sesGrid';
+import { exportFieldReport } from './utils/exportReport';
 import {
   STEPS,
   HEATMAP_DEFAULT_OPACITY,
@@ -710,6 +711,35 @@ export default function App() {
     return layers;
   }, [heatmapData, isHealthyOnlyHeatmap]);
 
+  // ── PDF Report Export ────────────────────────────────────────
+  // Reuses the same isProcessing/loadingMessage/loadingProgress overlay as
+  // handleGenerateHeatmap — a 50-plant session walks ~500 photos, so this
+  // needs the same "don't look frozen" treatment.
+  const handleExportReport = useCallback(async () => {
+    if (!heatmapData || samples.length === 0) return;
+
+    setIsProcessing(true);
+    setLoadingMessage('Building PDF report...');
+    setLoadingProgress(0);
+
+    try {
+      await exportFieldReport({
+        samples,
+        boundary,
+        heatmapData,
+        sesLayers,
+        availableLayers,
+        onProgress: setLoadingProgress,
+      });
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setIsProcessing(false);
+      setLoadingMessage('');
+      setLoadingProgress(null);
+    }
+  }, [samples, boundary, heatmapData, sesLayers, availableLayers]);
+
   // ── Map <-> Sample History Selection ────────────────────────
   // Two entry points into the same `selection` state — see its declaration
   // above for the shape. Both bump `seq` off the previous value (not a
@@ -1006,6 +1036,8 @@ export default function App() {
         onUndoPoint={handleUndoPoint}
         onFinishShape={handleFinishShape}
         onUndoVertex={handleUndoVertex}
+        onExportReport={handleExportReport}
+        isProcessing={isProcessing}
       />
 
       {/* Color legend — visible when heatmap is shown */}

@@ -11,10 +11,16 @@
  * makes it up to 500, on the mid-range Android this app targets. So object
  * URLs live only for the lifetime of a draft (where the lightbox needs full
  * resolution) and are revoked at commit, with these data URLs kept instead.
+ *
+ * 384px (not 192px) so a committed photo still reads clearly in the PDF
+ * report's three-pane row next to its 256px mask previews (see
+ * exportReport.js) — worst case 50 plants × 10 photos is now ~15 MB in the
+ * committed store, up from ~5 MB, still well inside the mid-range Android
+ * budget this file already tracks.
  */
 
 /** Longest edge of a stored thumbnail, in CSS pixels × 2 for retina. */
-const THUMBNAIL_MAX_EDGE = 192;
+const THUMBNAIL_MAX_EDGE = 384;
 const THUMBNAIL_QUALITY = 0.7;
 
 /**
