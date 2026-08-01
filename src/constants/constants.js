@@ -336,6 +336,18 @@ export const DEFAULT_ZOOM = 18;
  */
 export const HISTORY_SIDEBAR_OFFSET_PX = 348;
 
+/**
+ * How far the user can pan away from their field boundary during Sampling
+ * (MapController's setMaxBounds lock), as a fraction of the boundary's own
+ * width/height added on every side (Leaflet's `LatLngBounds.pad`). 1.5 means
+ * the pannable area extends 150% of the field's own size past each edge —
+ * roughly a 4x-wider box — loose enough to glance at surrounding context
+ * (access roads, neighboring plots for GPS orientation) while still pulling
+ * back to the field on release. Was 0.15 (15%), which felt like a hard wall
+ * for typical field sizes.
+ */
+export const SAMPLING_PAN_BOUNDS_PADDING = 1.5;
+
 /** Esri World Imagery — free, no API key required. */
 export const ESRI_TILE_URL =
   'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';

@@ -46,6 +46,16 @@ let queueTail = Promise.resolve();
  *   confidence: string,
  *   status?: string,
  *   diagnostics?: object,
+ *   masks?: {
+ *     leaf: string,
+ *     disease: string,
+ *     size_wh: [number, number],
+ *     source_size_wh: [number, number],
+ *     class_order: string[],
+ *     palette: object,
+ *     class_names: object,
+ *     leaf_color: string,
+ *   } | null,
  * }>}
  * @throws {Error} if the request fails, times out, or the server
  *   returns a non-OK status. Callers (App.jsx) must catch this and

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { STEPS, DEFAULT_ZOOM } from '../constants/constants';
+import { STEPS, DEFAULT_ZOOM, SAMPLING_PAN_BOUNDS_PADDING } from '../constants/constants';
 
 /**
  * ============================================================
@@ -63,7 +63,7 @@ export default function MapController({
       const bounds = L.geoJSON(boundary).getBounds();
       if (bounds.isValid()) {
         map.fitBounds(bounds, { padding: [24, 24] });
-        map.setMaxBounds(bounds.pad(0.15));
+        map.setMaxBounds(bounds.pad(SAMPLING_PAN_BOUNDS_PADDING));
       }
     } else {
       map.setMaxBounds(null);

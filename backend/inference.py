@@ -28,6 +28,8 @@ Deployment notes
 
 from __future__ import annotations
 
+import base64
+import colorsys
 import io
 import json
 import logging
@@ -52,6 +54,18 @@ DEFAULT_MIN_DISEASE_FRACTION = 0.001
 DEFAULT_MAX_SIDE = 2048  # pre-Phase-1 downscale cap (longest edge, px)
 DECOMPRESSION_BOMB_PIXELS = 80_000_000
 
+# Longest edge of the Phase 1 / Phase 2 mask previews returned to the UI
+# (src/components/MaskInspectorModal.jsx). Every app-produced photo is
+# exactly ALIGN_OUTPUT_WIDTH/HEIGHT = 1024x1024 (src/constants/constants.js)
+# and DEFAULT_MAX_SIDE (2048) never shrinks it, so `work` below is always
+# 1024x1024 in practice. 1024 / 256 = 4 exactly, so NEAREST decimation
+# samples a perfectly regular lattice with no moire; 320 or 384 give
+# non-integer ratios (3.2 / 2.67) and beat against the leaf's own veins.
+# Chosen small deliberately: these are FLAT-COLOR label images, so a 256px
+# preview upscaled ~1.3x to a phone-sized pane is visually indistinguishable
+# from a native one — there is no quality reason to go larger, only cost.
+MASK_PREVIEW_MAX_SIDE = 256
+
 BACKGROUND_TOKENS = ("background", "bg")
 HEALTHY_TOKENS = ("healthy",)
 
@@ -69,6 +83,37 @@ DISPLAY_NAMES = {
 
 def _display_name(label: str) -> str:
     return DISPLAY_NAMES.get(label, label.replace("_", " ").title())
+
+
+# Phase-2 mask-preview palette (MaskInspectorModal.jsx). Flat display colors
+# for the shipped 5-class checkpoint, keyed by LABEL — background is instead
+# resolved by class id (see _class_palette) since a re-trained checkpoint
+# could name it anything. These are display colors ONLY: they encode class
+# identity, not severity, and are deliberately unrelated to the green->red
+# SES ramp in src/utils/sesScale.js — a red mask region means "this class",
+# never "this is severe".
+MASK_PALETTE = {
+    "healthy_leaf": "#22c55e",       # green
+    "leaf_blast": "#3b82f6",         # blue
+    "brown_spot": "#f97316",         # orange
+    "bacterial_blight": "#e11d48",   # rose
+}
+
+
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    hex_color = hex_color.lstrip("#")
+    return tuple(int(hex_color[i : i + 2], 16) for i in (0, 2, 4))  # noqa: E203
+
+
+def _fallback_class_color(class_id: int) -> tuple[int, int, int]:
+    """Deterministic color for a class the static MASK_PALETTE doesn't cover
+    (e.g. a re-trained checkpoint's new class). Golden-ratio hue walk
+    maximally spaces hues for any class count; a fixed high value/saturation
+    keeps every fallback color distinct from the fixed background black and
+    readable under color-vision deficiency."""
+    hue = (class_id * 0.618033988749895) % 1.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.65, 0.90)
+    return (round(r * 255), round(g * 255), round(b * 255))
 
 
 def _read_json(path: Path) -> dict:
@@ -146,6 +191,24 @@ def _downscale(img: Image.Image, max_side: int | None) -> tuple[Image.Image, flo
     scale = max_side / float(long_side)
     new_size = (max(1, round(w * scale)), max(1, round(h * scale)))
     return img.resize(new_size, Image.BILINEAR), scale
+
+
+def _encode_png_data_url(img: Image.Image) -> str:
+    buf = io.BytesIO()
+    img.save(buf, format="PNG", optimize=True)
+    encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+def _preview_size(w: int, h: int, max_side: int) -> tuple[int, int]:
+    """Same longest-edge-cap math as `_downscale`, but on raw dimensions —
+    used to size the Phase 1 / Phase 2 mask previews so both always come out
+    with IDENTICAL dimensions regardless of which array is resized first."""
+    long_side = max(w, h)
+    if long_side <= max_side:
+        return w, h
+    scale = max_side / float(long_side)
+    return max(1, round(w * scale)), max(1, round(h * scale))
 
 
 # ── Leaf Focus Module (pure numpy, no model) ────────────────────────
@@ -314,6 +377,31 @@ class TwoStagePipeline:
             raise RuntimeError("No disease classes could be resolved.")
         self.disease_class_ids = disease_ids
 
+        # Mask-preview palette (MaskInspectorModal.jsx). Resolved from
+        # id2label so a re-trained checkpoint's classes always get a
+        # legible, distinct color with zero code changes here — see
+        # MASK_PALETTE's docstring.
+        self.mask_palette: dict[int, tuple[int, int, int]] = {}
+        for cid, lbl in self.id2label.items():
+            if cid == self.background_id:
+                self.mask_palette[cid] = (0, 0, 0)
+            elif lbl in MASK_PALETTE:
+                self.mask_palette[cid] = _hex_to_rgb(MASK_PALETTE[lbl])
+            else:
+                self.mask_palette[cid] = _fallback_class_color(cid)
+
+        # Flat 768-int table for PIL's `Image.putpalette` (256 entries x
+        # RGB), unused entries left black.
+        flat = [0] * 768
+        for cid, (r, g, b) in self.mask_palette.items():
+            flat[cid * 3 : cid * 3 + 3] = [r, g, b]
+        self._mask_palette_flat = flat
+
+        self.mask_palette_hex = {
+            lbl: "#{:02x}{:02x}{:02x}".format(*self.mask_palette[cid])
+            for cid, lbl in self.id2label.items()
+        }
+
         self.padding_fraction = float(
             self.metadata.get("leaf_crop_padding_fraction", DEFAULT_PADDING_FRACTION)
         )
@@ -337,7 +425,11 @@ class TwoStagePipeline:
     def _warmup(self) -> None:
         dummy = Image.new("RGB", (self.image_size, self.image_size), (24, 96, 24))
         try:
-            self.analyze(dummy)
+            # include_masks=False: the warmup dummy is a flat green square,
+            # which per this file's leaf-plausibility probe table gets
+            # masked edge-to-edge with high confidence — so without this it
+            # really would pay the full mask-encode cost on every startup.
+            self.analyze(dummy, include_masks=False)
         except Exception as exc:  # never let warmup block startup
             logger.warning("Warmup pass failed (continuing): %s", exc)
 
@@ -378,13 +470,23 @@ class TwoStagePipeline:
         return labels, win_prob
 
     # ── public API ───────────────────────────────────────────────
-    def analyze(self, image: Any) -> dict:
+    def analyze(self, image: Any, *, include_masks: bool = True) -> dict:
         """Run the full two-stage pipeline on one image.
 
         `image` may be a filesystem path, raw bytes, a file-like object,
         or a PIL Image. Returns a JSON-serializable dict whose top-level
         keys match the contract src/services/mockMLService.js already
         defines, plus a `diagnostics` block for thesis write-up.
+
+        `include_masks` (default True) controls whether the Phase 1 / Phase
+        2 mask previews (`masks` key, MaskInspectorModal.jsx) are built.
+        Default True keeps backend/server.py's
+        `run_in_threadpool(pipeline.analyze, raw)` call unchanged — Starlette
+        forwards positional args only, so a False default would force a
+        functools.partial/lambda there for no benefit. Keyword-only so it
+        can never be passed positionally where `image` goes. `_warmup` below
+        and backend/probe_fill.py pass include_masks=False since they only
+        care about the numeric measurement.
         """
         original = _to_pil(image)
         orig_w, orig_h = original.size
@@ -468,6 +570,18 @@ class TwoStagePipeline:
 
         disease_labels = [self.id2label[c] for c in self.disease_class_ids]
 
+        masks = None
+        if include_masks:
+            # A PNG-encode bug here must never turn a valid measurement
+            # into a 500 — runAnalysis (src/App.jsx) would surface that as
+            # "Analysis failed" and drop an otherwise-good photo out of the
+            # plant's PDLA. The frontend already treats masks: null as
+            # simply "no inspector button for this photo".
+            try:
+                masks = self._build_mask_previews(leaf_mask, restricted, (y0, y1, x0, x1), work_h, work_w)
+            except Exception:
+                logger.exception("Mask preview encoding failed; returning result without previews.")
+
         inv = 1.0 / scale if scale else 1.0
         return {
             # Contract consumed by src/services/mockMLService.js
@@ -479,6 +593,13 @@ class TwoStagePipeline:
             "status": "ok",
             "diseaseLabel": label if detected else "healthy_leaf",
             "diseaseClassId": int(winner),
+            # Phase 1 / Phase 2 mask preview images for MaskInspectorModal.jsx
+            # (src/components/). A display artifact, NOT diagnostic data —
+            # None when include_masks=False or on encode failure. Kept as a
+            # top-level sibling of `diagnostics` rather than nested inside
+            # it: `diagnostics` is thesis write-up material read for pixel
+            # counts, and this is ~10 KB of base64 that doesn't belong there.
+            "masks": masks,
             "diagnostics": {
                 "pdla_percent_raw": round(float(pdla_raw), 4),
                 "pdla_formula": self.metadata.get(
@@ -551,6 +672,66 @@ class TwoStagePipeline:
             return float(win_prob[crop_mask].mean())
         return 0.0
 
+    # ── mask previews (MaskInspectorModal.jsx) ──────────────────────
+    def _build_mask_previews(
+        self,
+        leaf_mask: np.ndarray,
+        restricted: np.ndarray,
+        bbox: tuple[int, int, int, int],
+        work_h: int,
+        work_w: int,
+    ) -> dict:
+        """Encode the Phase 1 leaf mask and Phase 2 disease mask as small
+        PNG data URLs, co-registered onto the same WORK-space pixel grid as
+        the original photo the user aligned. `restricted` (id2label ids,
+        CROP space, background-masked — see `analyze()`) is pasted back into
+        a full WORK-space canvas so all three panes the UI shows share one
+        coordinate system and overlay 1:1; the original crop offsets are
+        used directly rather than the `crop_bbox_xyxy` reported in
+        `diagnostics`, which is rescaled to ORIGINAL coordinates and rounded
+        for that different purpose and would drift a pixel per edge here.
+
+        NEAREST is not a quality choice — it is required for correctness.
+        Class ids are NOMINAL, not ordinal: any interpolating resize
+        (bilinear/bicubic/lanczos) averages ids, e.g. blending id 2
+        (leaf_blast) with id 4 (bacterial_blight) produces id 3
+        (brown_spot) along every lesion boundary — a diagnosis the model
+        never made, painted directly onto the one view whose entire purpose
+        is showing what it actually predicted.
+
+        Coordinate note: pane 1 (the aligned photo the caller already has
+        as `image.thumbnail`) is only pixel-identical to this WORK array
+        because every photo reaching /api/analyze is a Canvas2D crop from
+        cropToStencil.js carrying no EXIF tag, so `_to_pil`'s
+        exif_transpose is a no-op and `work` == the client's blob. That is
+        a property of the mandatory alignment step, not a guarantee this
+        method makes on its own — it would silently stop holding for any
+        caller that posts a raw camera file directly.
+        """
+        y0, y1, x0, x1 = bbox
+        size = _preview_size(work_w, work_h, MASK_PREVIEW_MAX_SIDE)
+
+        leaf_png = Image.fromarray(np.where(leaf_mask, 255, 0).astype(np.uint8), mode="L")
+        leaf_png = leaf_png.resize(size, Image.NEAREST).convert("1", dither=Image.Dither.NONE)
+
+        full_labels = np.full((work_h, work_w), self.background_id, dtype=np.uint8)
+        full_labels[y0:y1, x0:x1] = restricted
+        disease_png = Image.fromarray(full_labels, mode="P")
+        disease_png.putpalette(self._mask_palette_flat)
+        disease_png = disease_png.resize(size, Image.NEAREST)
+
+        class_order = sorted(self.id2label)
+        return {
+            "leaf": _encode_png_data_url(leaf_png),
+            "disease": _encode_png_data_url(disease_png),
+            "size_wh": [size[0], size[1]],
+            "source_size_wh": [work_w, work_h],
+            "class_order": [self.id2label[c] for c in class_order],
+            "palette": dict(self.mask_palette_hex),
+            "class_names": {lbl: _display_name(lbl) for lbl in self.mask_palette_hex},
+            "leaf_color": "#ffffff",
+        }
+
     def _no_leaf_result(self, ow, oh, ww, wh, scale) -> dict:
         """Phase 1 found nothing. Distinct status so the UI can ask for a
         retake instead of recording a 0% sample — a false 0 would drag
@@ -563,6 +744,11 @@ class TwoStagePipeline:
             "status": "no_leaf_detected",
             "diseaseLabel": None,
             "diseaseClassId": None,
+            # None, not an empty object or an all-black image: on this path
+            # there is no crop and no measurement at all, matching the
+            # neighboring None fields above — see the "same key set on both
+            # paths" contract in this dict's own comments.
+            "masks": None,
             "diagnostics": {
                 "leaf_pixels": 0,
                 "disease_pixels": 0,

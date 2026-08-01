@@ -151,7 +151,7 @@ def run_part1(pipeline, photos: list[Path]) -> dict[str, list[float]]:
         arr = np.array(pil)
         H, W = arr.shape[:2]
 
-        baseline = pipeline.analyze(pil)
+        baseline = pipeline.analyze(pil, include_masks=False)
         if baseline.get("status") != "ok":
             print(f"  skip {path.name}: baseline status={baseline.get('status')!r}")
             continue
@@ -187,7 +187,7 @@ def run_part1(pipeline, photos: list[Path]) -> dict[str, list[float]]:
         row = [f"{path.name:<28} baseline L0={L0}"]
         for fill_name in FILLS:
             composed = compose_with_fill(H, W, valid_rgb, valid_rect, fill_name)
-            result = pipeline.analyze(Image.fromarray(composed))
+            result = pipeline.analyze(Image.fromarray(composed), include_masks=False)
             L1 = result["diagnostics"].get("leaf_pixels", 0)
             leak = L1 - L0
             leak_frac = leak / ring_area if ring_area else float("nan")
@@ -257,7 +257,7 @@ def run_part2(pipeline, photos: list[Path], fill_name: str) -> None:
                 valid_rect = (y0, y0 + new_h, x0, x0 + new_w)
                 composed = compose_with_fill(H, W, resized, valid_rect, fill_name)
 
-            result = pipeline.analyze(Image.fromarray(composed))
+            result = pipeline.analyze(Image.fromarray(composed), include_masks=False)
             diag = result["diagnostics"]
             severities.append(result.get("severity"))
             frame_fracs.append(diag.get("leaf_frame_fraction"))

@@ -3,6 +3,7 @@ import { leafQualityWarning, photoDiagnosis } from '../utils/aggregateSample';
 import { MAX_IMAGES_PER_SAMPLE } from '../constants/constants';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import DiseaseFindingsList from './DiseaseFindingsList';
+import MaskLayersIcon from './MaskLayersIcon';
 
 /**
  * ============================================================
@@ -48,6 +49,7 @@ export default function SamplePanel({
   onRetryImage,
   onDismissImageWarning,
   onDiscardDraft,
+  onInspectMasks,
   canAddSample,
   coordWarning,
   disabled,
@@ -117,6 +119,10 @@ export default function SamplePanel({
     const severity = isOk ? image.result.severity : null;
     const showDiagnosis = isOk && !flagged;
     const diagnosis = showDiagnosis ? photoDiagnosis(image.result) : null;
+    // Gated on the payload itself, not on isOk/flagged: a flagged photo is
+    // precisely the one where the user most needs to see what the model
+    // found, so the inspector must stay reachable from an is-flagged tile.
+    const hasMasks = !!image.result?.masks;
 
     let stateClass = 'is-ok';
     if (image.analyzing) stateClass = 'is-analyzing';
@@ -141,7 +147,7 @@ export default function SamplePanel({
                   : flagged
                     ? '⚠'
                     : severity != null
-                      ? `${severity.toFixed(1)}%`
+                      ? `Severity: ${severity.toFixed(1)}%`
                       : '—'}
             </span>
             {showDiagnosis && (
@@ -149,8 +155,35 @@ export default function SamplePanel({
                 {diagnosis ? diagnosis.displayName : 'Healthy'}
               </span>
             )}
+            {showDiagnosis && (
+              <span className="upload-photo-tile-confidence">
+                Confidence: {parseFloat(image.result.confidence).toFixed(2)}
+              </span>
+            )}
           </span>
         </button>
+
+        {hasMasks && (
+          <button
+            type="button"
+            className="mask-inspect-btn"
+            onClick={() =>
+              onInspectMasks({
+                title: `Photo ${index + 1}`,
+                subtitle: image.result.diseaseDetected
+                  ? `${diagnosis?.displayName ?? image.result.diseaseName} · ${image.result.severity.toFixed(1)}%`
+                  : `Healthy · ${image.result.severity.toFixed(1)}%`,
+                originalSrc: image.thumbnail,
+                masks: image.result.masks,
+              })
+            }
+            aria-label={`Inspect model output for photo ${index + 1}`}
+            title="Inspect model output"
+          >
+            <MaskLayersIcon />
+            <span className="mask-inspect-label">Masks</span>
+          </button>
+        )}
 
         <button
           type="button"

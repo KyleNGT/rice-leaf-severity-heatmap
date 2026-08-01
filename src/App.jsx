@@ -8,6 +8,7 @@ import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
 import ImageAlignmentModal from './components/ImageAlignmentModal';
+import MaskInspectorModal from './components/MaskInspectorModal';
 import SampleHistorySidebar from './components/SampleHistorySidebar';
 import { useExifGps } from './hooks/useExifGps';
 import { useDeviceLocation } from './hooks/useDeviceLocation';
@@ -100,6 +101,17 @@ export default function App() {
 
   // Guards the await inside handleAddSample against a double-tap.
   const committingRef = useRef(false);
+
+  // ── Mask Inspector State ────────────────────────────────────
+  // A resolved SNAPSHOT ({ title, subtitle, originalSrc, masks }), not an
+  // id: it serves both draft photos (draftSample.images[]) and committed
+  // ones (samples[].images[]), which are different shapes in different
+  // arrays — passing plain data means one lookup path and the modal knows
+  // neither. Masks are immutable once analysis returns, so a snapshot
+  // can't go stale. See MaskInspectorModal.jsx.
+  const [maskViewer, setMaskViewer] = useState(null);
+  const handleInspectMasks = useCallback((payload) => setMaskViewer(payload), []);
+  const handleCloseMaskViewer = useCallback(() => setMaskViewer(null), []);
 
   // ── Map Fullscreen State ────────────────────────────────────
   const [mapFullscreen, setMapFullscreen] = useState(false);
@@ -408,6 +420,10 @@ export default function App() {
       if (!target) return;
 
       URL.revokeObjectURL(target.thumbnail);
+      // The mask inspector's originalSrc, when open on THIS photo, points at
+      // the same object URL just revoked above — close it rather than leave
+      // it showing a broken image.
+      setMaskViewer(null);
 
       applyDraft((prev) => {
         const images = prev.images.filter((image) => image.id !== imageId);
@@ -435,6 +451,9 @@ export default function App() {
 
   const handleDiscardDraft = useCallback(() => {
     draftRef.current?.images.forEach((image) => URL.revokeObjectURL(image.thumbnail));
+    // Every object URL just revoked above is a candidate for the mask
+    // inspector's originalSrc — close it rather than leave it dangling.
+    setMaskViewer(null);
     applyDraft(null);
   }, [applyDraft]);
 
@@ -565,6 +584,10 @@ export default function App() {
           diseaseName: image.result?.status === 'ok' ? image.result.diseaseName : null,
           diseaseLabel: image.result?.status === 'ok' ? image.result.diseaseLabel : null,
           confidence: image.result?.confidence ?? null,
+          // Phase-1/Phase-2 previews, already downscaled by the backend and
+          // shipped as data URLs — no object URL, no revoke, no re-encode.
+          // See CLAUDE.md's Mask Previews section.
+          masks: image.result?.masks ?? null,
           usable: isUsableImage(image),
         })),
         imageCount: draftSummary.totalCount,
@@ -585,6 +608,9 @@ export default function App() {
       draft.images.forEach((image, index) => {
         if (thumbs[index].downscaled) URL.revokeObjectURL(image.thumbnail);
       });
+      // Any of the object URLs just revoked above could be the mask
+      // inspector's originalSrc if it was left open through the save.
+      setMaskViewer(null);
 
       setSamples((prev) => [...prev, newSample]);
       applyDraft(null);
@@ -809,6 +835,7 @@ export default function App() {
             onRetryImage={handleRetryImage}
             onDismissImageWarning={handleDismissImageWarning}
             onDiscardDraft={handleDiscardDraft}
+            onInspectMasks={handleInspectMasks}
             canAddSample={canAddSample}
             coordWarning={coordWarning}
             disabled={isProcessing}
@@ -949,6 +976,7 @@ export default function App() {
             onRetryImage={handleRetryImage}
             onDismissImageWarning={handleDismissImageWarning}
             onDiscardDraft={handleDiscardDraft}
+            onInspectMasks={handleInspectMasks}
             canAddSample={canAddSample}
             coordWarning={coordWarning}
             disabled={isProcessing}
@@ -997,6 +1025,7 @@ export default function App() {
           selection={selection}
           onFocusOnMap={handleFocusOnMap}
           activeLayer={heatmapLayer}
+          onInspectMasks={handleInspectMasks}
         />
       )}
 
@@ -1017,6 +1046,16 @@ export default function App() {
           onCancel={handleAlignCancel}
         />
       )}
+
+      {/* Mask inspector — a direct child of .app for the same reason as the
+          alignment modal above: rendering it inside <SampleSheet> would put
+          it under .sheet's CSS transform, which becomes the containing
+          block for its position:fixed root and drags it around with the
+          sheet instead of the viewport. Shared by both entry points
+          (SamplePanel/SampleSheet's photo tiles, and
+          SampleHistorySidebar's rows) via the same handleInspectMasks
+          callback. */}
+      {maskViewer && <MaskInspectorModal {...maskViewer} onClose={handleCloseMaskViewer} />}
 
       {/* Loading overlay */}
       {isProcessing && (

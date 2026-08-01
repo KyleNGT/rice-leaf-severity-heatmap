@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { sesToColor, sampleSesForLayer } from '../utils/sesScale';
 import { HEATMAP_LAYER_GENERAL } from '../constants/constants';
+import MaskLayersIcon from './MaskLayersIcon';
 
 /** Plant row headline: every disease this plant carries, comma-joined —
  * never just the dominant one. Falls back to diseaseName for any record
@@ -65,7 +66,13 @@ function formatCapturedAt(capturedAt) {
  * sesScale.js's sampleSesForLayer, exactly like SampleMarker, so a plant's
  * color agrees between the sidebar and the map for whichever layer is up.
  */
-export default function SampleHistorySidebar({ samples, selection, onFocusOnMap, activeLayer }) {
+export default function SampleHistorySidebar({
+  samples,
+  selection,
+  onFocusOnMap,
+  activeLayer,
+  onInspectMasks,
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const contentRef = useRef(null);
@@ -246,6 +253,28 @@ export default function SampleHistorySidebar({ samples, selection, onFocusOnMap,
                             </span>
                           )}
                         </div>
+                        {photo.masks && (
+                          <button
+                            type="button"
+                            className="mask-inspect-btn history-photo-masks"
+                            onClick={() =>
+                              onInspectMasks({
+                                title: `Plant #${index + 1} · Photo ${photoIndex + 1}`,
+                                subtitle:
+                                  photo.severity != null
+                                    ? `${photo.diseaseName ?? 'Healthy'} · ${photo.severity.toFixed(1)}%`
+                                    : undefined,
+                                originalSrc: photo.thumbnail,
+                                masks: photo.masks,
+                              })
+                            }
+                            aria-label={`Inspect model output for plant ${index + 1} photo ${photoIndex + 1}`}
+                            title="Inspect model output"
+                          >
+                            <MaskLayersIcon />
+                            <span>Masks</span>
+                          </button>
+                        )}
                         {!photo.usable && <span className="history-photo-badge">Excluded</span>}
                       </li>
                     ))}
