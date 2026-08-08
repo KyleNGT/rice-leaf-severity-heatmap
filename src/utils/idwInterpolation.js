@@ -16,10 +16,70 @@
  *   const { layers, cols, rows, bbox } =
  *     await computeIDW(samples, boundary, channelKeys, onProgress);
  *   // layers[channelKeys[i]] === { grid: Float32Array, min, max }
+ *
+ * resolveDiseaseChannels() below is pure and DOM-free (no Worker use at
+ * module scope — computeIDW only constructs one inside the function body),
+ * so this module is importable from loocv.js under plain `node`, same as
+ * sesScale.js and aggregateSample.js — hence the explicit .js extension on
+ * the constants import.
  */
 
 import * as turf from '@turf/turf';
-import { IDW_POWER, IDW_CELL_SIZE_METERS, IDW_MAX_CELLS } from '../constants/constants';
+import { IDW_POWER, IDW_CELL_SIZE_METERS, IDW_MAX_CELLS } from '../constants/constants.js';
+
+/** Synthetic IDW channel used ONLY when no sample has any disease reading
+ * (a field that reads entirely Healthy). computeIDW needs at least one
+ * channel to run at all; every sample contributes 0 on it (via the same
+ * `diseaseSeverity[key] ?? 0` fallback every real channel uses), so the
+ * resulting grid is a flat 0 everywhere inside the boundary — exactly the
+ * flat SES-0 General surface a healthy field should render as. It never
+ * appears in a field's real disease list — see resolveDiseaseChannels(). */
+export const NO_DISEASE_CHANNEL = '__none__';
+
+/**
+ * Determine which disease channels a set of committed samples actually
+ * needs — the single source of truth shared by the live heatmap
+ * (App.jsx's handleGenerateHeatmap) and the LOOCV validator (loocv.js), so
+ * both always score/render the same channels.
+ *
+ * A disease is "present" if at least one sample reads a nonzero (post-gate)
+ * PDLA for it — see aggregateSample.js's diseaseSeverity. Ordering follows
+ * the first sample's diseaseLabels (the backend's own class order); any
+ * present label missing from that order (shouldn't happen, but cheap to be
+ * defensive about) is appended. An entirely-Healthy field falls back to the
+ * synthetic NO_DISEASE_CHANNEL so interpolation still has one channel to run.
+ *
+ * @param {Array<{ diseaseLabels?: string[], diseaseSeverity?: object, diseaseDisplayNames?: object }>} samples
+ * @returns {{ diseaseKeys: string[], channelKeys: string[], displayNames: Record<string, string> }}
+ *   diseaseKeys — real disease labels present (empty if the field is
+ *     entirely Healthy). channelKeys — what to actually hand computeIDW
+ *     (falls back to [NO_DISEASE_CHANNEL] when diseaseKeys is empty).
+ *   displayNames — every sample's diseaseDisplayNames pooled together, so a
+ *     disease seen on only one plant still gets a real display name.
+ */
+export function resolveDiseaseChannels(samples) {
+  const present = new Set();
+  let labelOrder = [];
+  const displayNames = {};
+
+  for (const s of samples) {
+    if (labelOrder.length === 0 && s.diseaseLabels?.length) {
+      labelOrder = s.diseaseLabels;
+    }
+    for (const [label, value] of Object.entries(s.diseaseSeverity ?? {})) {
+      if (value > 0) present.add(label);
+    }
+    Object.assign(displayNames, s.diseaseDisplayNames ?? {});
+  }
+
+  const diseaseKeys = labelOrder.filter((label) => present.has(label));
+  for (const label of present) {
+    if (!diseaseKeys.includes(label)) diseaseKeys.push(label);
+  }
+  const channelKeys = diseaseKeys.length > 0 ? diseaseKeys : [NO_DISEASE_CHANNEL];
+
+  return { diseaseKeys, channelKeys, displayNames };
+}
 
 /**
  * Compute IDW interpolation over a field boundary, one channel per disease.

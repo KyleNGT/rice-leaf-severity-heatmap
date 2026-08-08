@@ -27,9 +27,16 @@
  * -1 remains the sentinel for "outside the boundary", written into every
  * channel of a cell together — see HeatmapOverlay.jsx's `value < 0` guard,
  * which is unchanged by this file's move to multiple channels.
+ *
+ * The actual per-cell IDW math lives in idwCore.js's idwEstimateInto() —
+ * extracted so loocv.js validates the exact same estimator this worker
+ * paints the heatmap with, not a parallel re-implementation. See that
+ * file's docblock for the formula and the degree-space distance caveat.
  */
 
 /* eslint-disable no-restricted-globals */
+
+import { idwEstimateInto } from './idwCore.js';
 
 self.onmessage = function (e) {
   const { samples, boundaryCoords, cellSize, power, bbox, channels } = e.data;
@@ -75,38 +82,11 @@ self.onmessage = function (e) {
       }
 
       // IDW interpolation — weights are per-sample (distance-only), shared
-      // across every channel; only the numerators differ.
-      numerators.fill(0);
-      let denominator = 0;
-      let exactMatchIdx = -1;
-
-      for (let i = 0; i < samples.length; i++) {
-        const dx = lng - samples[i].lng;
-        const dy = lat - samples[i].lat;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < 1e-10) {
-          // Exact match — use this sample's values directly, for every channel.
-          exactMatchIdx = i;
-          break;
-        }
-
-        const w = 1 / Math.pow(dist, power);
-        denominator += w;
-        const values = samples[i].values;
-        for (let ch = 0; ch < channels; ch++) {
-          numerators[ch] += w * values[ch];
-        }
-      }
+      // across every channel; only the numerators differ. See idwCore.js.
+      idwEstimateInto(numerators, samples, lat, lng, power, channels);
 
       for (let ch = 0; ch < channels; ch++) {
-        const value =
-          exactMatchIdx >= 0
-            ? samples[exactMatchIdx].values[ch]
-            : denominator > 0
-              ? numerators[ch] / denominator
-              : 0;
-
+        const value = numerators[ch];
         const idx = ch * cellCount + cellIdx;
         grid[idx] = value;
 

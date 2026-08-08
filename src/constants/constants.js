@@ -384,8 +384,14 @@ export const GEO_TIMEOUT_MS = 10000;
  * variables to the backend's public origin (e.g. a Cloudflare Tunnel URL
  * while testing, or a container host's URL later). Trailing slashes are
  * stripped so '<url>/' and '<url>' behave the same.
+ *
+ * Optional chaining on `import.meta.env` itself (not just the property)
+ * because Vite always defines it, but a bare `node` process doesn't — this
+ * constants module is transitively imported by every Node-runnable utility
+ * in src/utils (sesScale.js, aggregateSample.js, loocv.js), and those must
+ * keep working under `node scripts/loocv.js` etc. without a bundler.
  */
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
 
 /**
  * SegFormer 2-stage inference endpoint. Real inference is slower than the

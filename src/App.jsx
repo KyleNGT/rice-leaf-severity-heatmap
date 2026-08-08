@@ -15,11 +15,13 @@ import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
 import { useAlignmentQueue } from './hooks/useAlignmentQueue';
 import { analyzePlantImage, checkBackendHealth } from './services/mockMLService';
-import { computeIDW } from './utils/idwInterpolation';
+import { computeIDW, resolveDiseaseChannels, NO_DISEASE_CHANNEL } from './utils/idwInterpolation';
 import { summarizePlant, isUsableImage } from './utils/aggregateSample';
 import { makeThumbnails } from './utils/makeThumbnail';
 import { pdlaGridToSes, maxSesGrid } from './utils/sesGrid';
 import { exportFieldReport } from './utils/exportReport';
+import { exportLoocvArtifacts } from './utils/exportLoocv';
+import { runLOOCValidation, optimizePowerParameter } from './utils/loocv';
 import {
   STEPS,
   HEATMAP_DEFAULT_OPACITY,
@@ -31,15 +33,6 @@ import {
 import './App.css';
 
 let imageSeq = 0;
-
-/** Synthetic IDW channel used ONLY when no sample has any disease reading
- * (a field that reads entirely Healthy). computeIDW needs at least one
- * channel to run at all; every sample contributes 0 on it (via the same
- * `diseaseSeverity[key] ?? 0` fallback every real channel uses), so the
- * resulting grid is a flat 0 everywhere inside the boundary — exactly the
- * flat SES-0 General surface a healthy field should render as. It never
- * appears in availableLayers; see the heatmapData.diseaseKeys check below. */
-const NO_DISEASE_CHANNEL = '__none__';
 
 /** A freshly-picked photo, before its analysis comes back. */
 function newDraftImage(file, source) {
@@ -213,6 +206,22 @@ export default function App() {
       cancelled = true;
     };
   }, [currentStep]);
+
+  // Dev-only console hook for driving LOOCV from the browser console without
+  // going through the Sample History sidebar button — e.g. to try a custom
+  // power list mid-session. import.meta.env.DEV keeps this out of production
+  // builds entirely (Vite dead-code-eliminates the branch).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    window.__loocv = {
+      samples,
+      run: (power, options) => runLOOCValidation(samples, power, options),
+      sweep: (candidatePowers, options) => optimizePowerParameter(samples, candidatePowers, options),
+    };
+    return () => {
+      delete window.__loocv;
+    };
+  }, [samples]);
 
   // ── Draft Mutation ──────────────────────────────────────────
   // Every write to the draft goes through applyDraft, and draftRef is the
@@ -657,34 +666,14 @@ export default function App() {
     setHeatmapLayer(HEATMAP_LAYER_GENERAL);
 
     try {
-      // Diseases actually present: at least one plant reads a nonzero
-      // (post-gate) PDLA for it — see aggregateSample.js's diseaseSeverity.
-      // A field that reads entirely Healthy still needs one channel to
-      // interpolate at all; NO_DISEASE_CHANNEL covers that case.
-      const present = new Set();
-      let labelOrder = [];
-      for (const s of samples) {
-        if (labelOrder.length === 0 && s.diseaseLabels?.length) {
-          labelOrder = s.diseaseLabels;
-        }
-        for (const [label, value] of Object.entries(s.diseaseSeverity ?? {})) {
-          if (value > 0) present.add(label);
-        }
-      }
-      const diseaseKeys = labelOrder.filter((label) => present.has(label));
-      for (const label of present) {
-        if (!diseaseKeys.includes(label)) diseaseKeys.push(label);
-      }
-      const channelKeys = diseaseKeys.length > 0 ? diseaseKeys : [NO_DISEASE_CHANNEL];
+      // Diseases actually present, and which channels to hand computeIDW —
+      // shared with loocv.js via resolveDiseaseChannels() so the live
+      // heatmap and the LOOCV validator always score the same channels.
+      const { diseaseKeys, channelKeys, displayNames } = resolveDiseaseChannels(samples);
 
       const result = await computeIDW(samples, boundary, channelKeys, (progress) => {
         setLoadingProgress(progress);
       });
-
-      // Display names pooled across every sample, so a disease seen on only
-      // one plant still gets a real name in the layer toggle/legend.
-      const displayNames = {};
-      for (const s of samples) Object.assign(displayNames, s.diseaseDisplayNames ?? {});
 
       setHeatmapData({ ...result, diseaseKeys, displayNames });
     } catch (err) {
@@ -763,6 +752,17 @@ export default function App() {
       setLoadingProgress(null);
     }
   }, [samples, boundary, heatmapData, sesLayers, availableLayers]);
+
+  // ── LOOCV Validation Export ──────────────────────────────────
+  // Unlike the PDF report, this is milliseconds of pure arithmetic (no
+  // image decoding) — no isProcessing overlay needed. See exportLoocv.js.
+  const handleExportLoocv = useCallback((sampleSet) => {
+    try {
+      exportLoocvArtifacts(sampleSet);
+    } catch (err) {
+      console.error('LOOCV export failed:', err);
+    }
+  }, []);
 
   // ── Map <-> Sample History Selection ────────────────────────
   // Two entry points into the same `selection` state — see its declaration
@@ -1084,6 +1084,7 @@ export default function App() {
           onFocusOnMap={handleFocusOnMap}
           activeLayer={heatmapLayer}
           onInspectMasks={handleInspectMasks}
+          onExportLoocv={handleExportLoocv}
         />
       )}
 

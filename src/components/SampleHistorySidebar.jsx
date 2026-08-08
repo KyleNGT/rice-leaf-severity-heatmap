@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { sesToColor, sampleSesForLayer } from '../utils/sesScale';
-import { HEATMAP_LAYER_GENERAL } from '../constants/constants';
+import { HEATMAP_LAYER_GENERAL, MIN_SAMPLES } from '../constants/constants';
 import MaskLayersIcon from './MaskLayersIcon';
 
 /** Plant row headline: every disease this plant carries, comma-joined —
@@ -65,6 +65,14 @@ function formatCapturedAt(capturedAt) {
  * one disease). Each row's dot and severity color follow it via
  * sesScale.js's sampleSesForLayer, exactly like SampleMarker, so a plant's
  * color agrees between the sidebar and the map for whichever layer is up.
+ *
+ * `onExportLoocv(samples)` — optional; when provided, a low-prominence
+ * button renders at the end of the plant list (below every row, still
+ * inside this hidden panel) that runs Leave-One-Out Cross-Validation over
+ * the session and downloads the results — see exportLoocv.js. Gated on
+ * MIN_SAMPLES, same floor computeIDW itself requires. This component stays
+ * purely presentational: it renders the button and forwards the click, all
+ * computation happens in the caller (App.jsx's handleExportLoocv).
  */
 export default function SampleHistorySidebar({
   samples,
@@ -72,6 +80,7 @@ export default function SampleHistorySidebar({
   onFocusOnMap,
   activeLayer,
   onInspectMasks,
+  onExportLoocv,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
@@ -283,6 +292,17 @@ export default function SampleHistorySidebar({
               </div>
             );
           })}
+
+          {onExportLoocv && samples.length >= MIN_SAMPLES && (
+            <button
+              type="button"
+              className="history-loocv-btn"
+              onClick={() => onExportLoocv(samples)}
+              title="Run Leave-One-Out Cross-Validation over this session's plant samples and download the results"
+            >
+              Export LOOCV Validation (CSV + JSON)
+            </button>
+          )}
         </div>
       </aside>
     </>

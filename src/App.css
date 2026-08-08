@@ -2594,6 +2594,32 @@ html, body, #root {
   text-align: center;
 }
 
+/* Tucked at the very end of the plant list, low-prominence on purpose —
+   this is a thesis-validation tool for the person running the survey, not
+   a farmer-facing action. Still a full 48px touch target and plain-text
+   label per the no-emoji / recognition-over-recall rules. */
+.history-loocv-btn {
+  display: block;
+  width: calc(100% - 2 * var(--space-md));
+  margin: var(--space-md);
+  min-height: 48px;
+  padding: 0 var(--space-sm);
+  border: 1px dashed var(--border-subtle);
+  border-radius: 10px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.history-loocv-btn:active {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary);
+}
+
 /* Horizontal inset lives here, not on .history-sidebar-content, so the
    is-selected background/accent bar below can bleed edge-to-edge across
    the full sidebar width instead of stopping short at a parent padding

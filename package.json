@@ -8,7 +8,8 @@
     "dev:api": "backend/.venv/bin/uvicorn backend.server:app --reload --reload-dir backend --port 8000",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "loocv": "node scripts/loocv.js"
   },
   "dependencies": {
     "@geoman-io/leaflet-geoman-free": "^2.20.0",
