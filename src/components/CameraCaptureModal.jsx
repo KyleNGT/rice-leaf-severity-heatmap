@@ -35,10 +35,17 @@ import { ALIGN_GUIDE_WIDTH_FRACTION, ALIGN_JPEG_QUALITY, ALIGN_FRAMING_HINT } fr
  * nothing here measures or enforces whether the leaf actually fits it.
  *
  * Capture is a plain <canvas> + drawImage, not `ImageCapture.takePhoto()`
- * (no Safari support). It captures the STAGE'S VISIBLE WINDOW of the video,
- * not the raw sensor frame — the video is displayed with `object-fit:
- * cover`, so a naive `videoWidth × videoHeight` capture would hand the
- * aligner pixels the farmer never saw framed. See handleShutter below.
+ * (no Safari support). It captures the CENTERED SQUARE of the stage's
+ * visible window's shorter side — not the raw sensor frame (the video is
+ * displayed with `object-fit: cover`, so a naive `videoWidth × videoHeight`
+ * capture would hand the aligner pixels the farmer never saw framed), and
+ * not the full visible rectangle either. That square is exactly what
+ * useFramedStageSize's frameSize (the live guide box, drawn at
+ * ALIGN_STAGE_INSET_FRACTION of this same shorter side) sits inside of,
+ * concentrically — which is what makes ImageAlignmentModal's own
+ * "contain"-fit + cropSize land its DEFAULT crop box on exactly the region
+ * the guide framed, with no user zoom/pan needed. See handleShutter below
+ * for the derivation.
  *
  * Rendered by App.jsx as a direct child of `.app`, same reasoning as
  * ImageAlignmentModal/MaskInspectorModal: `.sheet` carries a CSS transform
@@ -108,20 +115,48 @@ export default function CameraCaptureModal({ onCapture, onCancel, onFallbackToSy
 
     // Map the stage's visible window back into video pixels — the same
     // math `object-fit: cover` uses to decide what's on screen, run in
-    // reverse, so the captured File matches exactly what the farmer framed
-    // (not the full, uncropped sensor frame).
+    // reverse — then take the CENTERED SQUARE of that window's shorter
+    // side, rather than the full window. Capturing only that square (not
+    // the full ~9:16 visible rectangle) is what lets ImageAlignmentModal
+    // open with its crop box already ON the framed region instead of
+    // needing a full re-crop:
+    //
+    // react-easy-crop fits the media at zoom=1 via `objectFit: "contain"`
+    // against the OUTER STAGE CONTAINER, not against `cropSize` (verified
+    // against the library's own source, computeSizes() in
+    // node_modules/react-easy-crop/index.js) — for a SQUARE source image,
+    // that always yields a displayed size of exactly min(stageW, stageH),
+    // regardless of the container's own aspect ratio. cropSize
+    // (useFramedStageSize.js) is ALIGN_STAGE_INSET_FRACTION * that SAME
+    // min(stageW, stageH). So cropSize / displayedImageSize always equals
+    // ALIGN_STAGE_INSET_FRACTION exactly, regardless of how the aligner's
+    // OWN stage differs in size from this one (it has more chrome — the
+    // rotate/flip row, two sliders, the alert slot — so it's shorter) —
+    // both the numerator and denominator scale off the same container's
+    // own min(W, H). Since the captured square here is the FULL
+    // min(stageW, stageH) of THIS stage, and the live guide box drawn on
+    // top of it is ALIGN_STAGE_INSET_FRACTION of that same square,
+    // concentric and centered — the aligner's default crop box selects
+    // exactly the same physical region the live guide highlighted. Exact
+    // by construction, up to ordinary sub-pixel rounding (Math.round()
+    // below and in useFramedStageSize).
     const stageRect = stage.getBoundingClientRect();
     const scale = Math.max(stageRect.width / vw, stageRect.height / vh);
     const visW = stageRect.width / scale;
     const visH = stageRect.height / scale;
-    const sx = (vw - visW) / 2;
-    const sy = (vh - visH) / 2;
+    const side = Math.min(visW, visH);
+    // Centering the square directly against the full video frame is
+    // equivalent to centering it within the already-centered visible
+    // window — the visible window and the video frame share one center,
+    // so the two centering steps collapse into one.
+    const sx = (vw - side) / 2;
+    const sy = (vh - side) / 2;
 
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(visW);
-    canvas.height = Math.round(visH);
+    canvas.width = Math.round(side);
+    canvas.height = Math.round(side);
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, sx, sy, visW, visH, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, sx, sy, side, side, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob(
       (blob) => {
