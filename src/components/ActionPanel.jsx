@@ -1,5 +1,6 @@
-import { STEPS, HEATMAP_MIN_OPACITY, HEATMAP_MAX_OPACITY } from '../constants/constants';
+import { STEPS } from '../constants/constants';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
+import HeatmapTray from './HeatmapTray';
 
 /**
  * ============================================================
@@ -218,75 +219,18 @@ export default function ActionPanel({
   // ── Step 3: Heatmap ────────────────────────────────────────
   if (currentStep === STEPS.HEATMAP) {
     return (
-      <div className="action-panel">
-        <div className="action-card">
-          <h3 className="action-title">Disease Pressure Heatmap</h3>
-
-          {/* Layer toggle — mobile only. On desktop this same control lives
-              on ColorLegend instead, since it was eating most of this
-              card's height and blocking the map underneath it. Hidden
-              entirely when the field has no disease reading at all, in
-              which case General is the only layer there is. */}
-          {heatmapData && availableLayers?.length > 1 && isMobile && (
-            <div className="layer-toggle" role="group" aria-label="Heatmap layer">
-              {availableLayers.map((layer) => (
-                <button
-                  key={layer.key}
-                  type="button"
-                  className={`layer-toggle-btn ${heatmapLayer === layer.key ? 'layer-toggle-btn--active' : ''}`}
-                  onClick={() => onHeatmapLayerChange(layer.key)}
-                  aria-pressed={heatmapLayer === layer.key}
-                >
-                  {layer.name}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {heatmapData && (
-            <div className="opacity-control">
-              <label htmlFor="opacity-slider" className="opacity-label">
-                Overlay Opacity
-              </label>
-              <input
-                id="opacity-slider"
-                type="range"
-                min={HEATMAP_MIN_OPACITY * 100}
-                max={HEATMAP_MAX_OPACITY * 100}
-                value={Math.round(heatmapOpacity * 100)}
-                onChange={(e) => onOpacityChange(Number(e.target.value) / 100)}
-                className="opacity-slider"
-              />
-              <span className="opacity-value">{Math.round(heatmapOpacity * 100)}%</span>
-            </div>
-          )}
-
-          <button
-            className="btn btn-primary btn-full"
-            onClick={onResumeSampling}
-          >
-            ＋ Add More Samples
-          </button>
-
-          {heatmapData && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-full"
-              onClick={onExportReport}
-              disabled={isProcessing}
-            >
-              ↓ Export PDF Report
-            </button>
-          )}
-
-          <button
-            className="btn btn-secondary btn-full"
-            onClick={onReset}
-          >
-            ↩ Start New Analysis
-          </button>
-        </div>
-      </div>
+      <HeatmapTray
+        onResumeSampling={onResumeSampling}
+        heatmapOpacity={heatmapOpacity}
+        onOpacityChange={onOpacityChange}
+        heatmapData={heatmapData}
+        availableLayers={availableLayers}
+        heatmapLayer={heatmapLayer}
+        onHeatmapLayerChange={onHeatmapLayerChange}
+        onExportReport={onExportReport}
+        onReset={onReset}
+        isProcessing={isProcessing}
+      />
     );
   }
 
