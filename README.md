@@ -89,6 +89,8 @@ Starts the Vite dev server on `http://localhost:5173`. Vite proxies `/api/*` req
 
 Open `http://localhost:5173` in a browser (or on a phone on the same network) to use the app.
 
+> **Testing the in-app camera on a phone:** the Sampling step's Camera button prefers a live in-app viewfinder (with the leaf-alignment guide overlaid on the feed) over the OS camera app, but that requires a secure context (`getUserMedia`). The LAN address above (`http://192.168.x.x:5173`) is plain HTTP and does **not** qualify, so on a phone it silently falls back to the OS camera app instead — same as before this feature existed, just without the live guide. To actually exercise the live viewfinder on a phone, test against a deployed HTTPS build or a tunnel (see "Deploying the front end" below).
+
 ## Other commands
 
 ```bash

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import { cropAlignedImage, flipImage, getCropOverflowFraction } from '../utils/cropToStencil';
+import { useFramedStageSize } from '../hooks/useFramedStageSize';
+import AlertTriangleIcon from './AlertTriangleIcon';
 import {
   ALIGN_ASPECT,
-  ALIGN_STAGE_INSET_FRACTION,
   ALIGN_GUIDE_WIDTH_FRACTION,
   ALIGN_MIN_ZOOM,
   ALIGN_MAX_ZOOM,
@@ -12,36 +13,12 @@ import {
   ALIGN_MAX_OVERFLOW_FRACTION,
   ALIGN_WARN_OVERFLOW_FRACTION,
   ALIGN_BLUR_WARN_SOURCE_WIDTH,
+  ALIGN_FRAMING_HINT,
 } from '../constants/constants';
 
 const NO_FLIP = { horizontal: false, vertical: false };
 
 let cropFileSeq = 0;
-
-// Plain SVG, not the `⚠` glyph — the design system (CLAUDE.md) bans emoji in
-// the UI because emoji glyphs render inconsistently (often as color emoji)
-// across Android builds, which is exactly the risk on the mid-range Android
-// devices this app targets. Shared by the stage badge and the alert card
-// below so both always show the identical mark.
-function AlertTriangleIcon() {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 3.5 L22 20.5 H2 Z" />
-      <line x1="12" y1="9.5" x2="12" y2="14.5" />
-      <circle cx="12" cy="17.5" r="0.5" fill="currentColor" />
-    </svg>
-  );
-}
 
 /**
  * ============================================================
@@ -81,9 +58,10 @@ function AlertTriangleIcon() {
  * crop-box element (`classes.cropAreaClassName`, see `.align-frame` in
  * App.css) rather than drawing a separate overlay: the library already dims
  * everything outside that element via its own default CSS, and sizing it
- * with an explicit `cropSize` (measured off the stage via ResizeObserver,
- * below) is what leaves visible margin on all four sides instead of the box
- * filling its container edge-to-edge. Inside that rectangle, a second static
+ * with an explicit `cropSize` (useFramedStageSize.js, shared with
+ * CameraCaptureModal's live viewfinder so both screens draw the identical
+ * rectangle) is what leaves visible margin on all four sides instead of the
+ * box filling its container edge-to-edge. Inside that rectangle, a second static
  * guide (`.align-frame::before`, driven by the `--align-guide-width-fraction`
  * CSS var set below) marks the blade width a well-framed leaf should fill —
  * see ALIGN_GUIDE_WIDTH_FRACTION in constants.js for why. It is drawn, not
@@ -115,8 +93,7 @@ export default function ImageAlignmentModal({
   const [error, setError] = useState('');
   const [workingUrl, setWorkingUrl] = useState(imageUrl);
   const [workingFile, setWorkingFile] = useState(file);
-  const [cropSize, setCropSize] = useState(null);
-  const stageRef = useRef(null);
+  const { stageRef, frameSize: cropSize } = useFramedStageSize();
 
   const rotation = baseRotation + fineRotation;
 
@@ -135,48 +112,13 @@ export default function ImageAlignmentModal({
     setError('');
   }, [imageUrl]);
 
-  // The visible framing rectangle is fit as the largest ALIGN_ASPECT rect
-  // that stays within ALIGN_STAGE_INSET_FRACTION of the stage's own measured
-  // size on EITHER axis — that's what leaves dimmed margin on every side
-  // rather than the box touching the stage's edges, while guaranteeing the
-  // on-screen box is always the same shape as the exported crop regardless of
-  // the stage's own aspect (a tall stage used to produce a visibly non-square
-  // box that still exported as a square, silently distorting the image — see
-  // ALIGN_STAGE_INSET_FRACTION in constants.js). Only the ON-SCREEN pixel size
-  // varies by device; the exported crop stays
+  // The visible framing rectangle's geometry (cropSize, aliased from
+  // useFramedStageSize's frameSize above) is shared with CameraCaptureModal
+  // via that one hook — see its header for why. Only the ON-SCREEN pixel
+  // size varies by device; the exported crop stays
   // ALIGN_OUTPUT_WIDTH × ALIGN_OUTPUT_HEIGHT regardless, since
   // cropAlignedImage resamples from croppedAreaPixels (natural source-image
   // coordinates), never from this layout measurement.
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage || typeof ResizeObserver === 'undefined') return undefined;
-
-    const observer = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (!rect || rect.width === 0 || rect.height === 0) return;
-      const maxWidth = rect.width * ALIGN_STAGE_INSET_FRACTION;
-      const maxHeight = rect.height * ALIGN_STAGE_INSET_FRACTION;
-      let width = maxWidth;
-      let height = width / ALIGN_ASPECT;
-      if (height > maxHeight) {
-        height = maxHeight;
-        width = height * ALIGN_ASPECT;
-      }
-      const nextWidth = Math.round(width);
-      const nextHeight = Math.round(height);
-      // Skip the update (and the <Cropper> re-render it triggers) when the
-      // rounded size hasn't actually changed — sub-pixel ResizeObserver
-      // noise would otherwise reach the crop box even though nothing the
-      // user can see moved.
-      setCropSize((prev) =>
-        prev && prev.width === nextWidth && prev.height === nextHeight
-          ? prev
-          : { width: nextWidth, height: nextHeight }
-      );
-    });
-    observer.observe(stage);
-    return () => observer.disconnect();
-  }, []);
 
   // Regenerates the working (possibly flipped) image whenever flip changes
   // or a new photo loads. The unflipped case is the common one and reuses
@@ -333,10 +275,7 @@ export default function ImageAlignmentModal({
         )}
       </div>
 
-      <p className="align-hint">
-        Fit the leaf so its widest part just touches the inner guide without crossing it, and let
-        the blade run from top to bottom.
-      </p>
+      <p className="align-hint">{ALIGN_FRAMING_HINT}</p>
 
       <div className="align-controls">
         <span className="align-control-label">Zoom</span>

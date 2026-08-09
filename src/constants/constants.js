@@ -296,6 +296,17 @@ export const ALIGN_WARN_OVERFLOW_FRACTION = 0.25;
  */
 export const ALIGN_BLUR_WARN_SOURCE_WIDTH = ALIGN_OUTPUT_WIDTH;
 
+/**
+ * The on-screen framing instruction, shared verbatim by ImageAlignmentModal
+ * (the mandatory crop step) and CameraCaptureModal (the live in-app
+ * viewfinder that feeds it, when getUserMedia is available — see
+ * cameraSupport.js). Both screens draw the identical framing rectangle and
+ * blade-width guide (via useFramedStageSize.js), so the instruction that
+ * goes with them must be identical too, not two copies that could drift.
+ */
+export const ALIGN_FRAMING_HINT =
+  "Fit the leaf so its widest part just touches the inner guide without crossing it, and let the blade run from top to bottom.";
+
 // ── IDW (Inverse Distance Weighting) Parameters ─────────────
 /**
  * IDW Power Parameter (p):
