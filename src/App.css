@@ -2053,6 +2053,108 @@ html, body, #root {
   margin-bottom: var(--space-md);
 }
 
+/* ── Heatmap Tray (Step 3) ──────────────────────────────────────
+   Same Google-Maps-style collapsible tray as .sheet (Step 2), but
+   nested inside .action-panel instead of being its own fixed,
+   edge-to-edge element — .action-panel already handles bottom-center
+   desktop placement (translateX(-50%) below), so .tray only needs to
+   own the collapse/expand slide, not positioning. Deliberately a
+   *second* translateY-driven element rather than reusing .action-panel
+   itself: the desktop rule below sets transform: translateX(-50%) on
+   .action-panel, and a translateY there would clobber that centering.
+
+   .action-panel--tray turns off pointer-events on the wrapper because,
+   unlike .sheet (position: fixed, so its own box moves with its
+   transform), .action-panel is sized to its child's normal-flow layout
+   box, which transform doesn't shrink — so collapsing .tray would
+   otherwise leave an invisible hit-target the same size as the
+   expanded card, blocking map taps under it. .tray re-enables
+   pointer-events so its own (visually moved) box stays interactive. */
+.action-panel--tray {
+  pointer-events: none;
+}
+
+.tray {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-glow);
+  overflow: hidden;
+  transform: translateY(calc(100% - var(--sheet-peek)));
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+  touch-action: none;
+}
+
+.tray--expanded {
+  transform: translateY(0);
+}
+
+.tray--dragging {
+  transition: none;
+}
+
+.tray-handle-row {
+  position: relative;
+  flex-shrink: 0;
+  height: var(--sheet-peek);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: 0 var(--space-lg);
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.tray-handle-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--border-subtle);
+}
+
+.tray-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.tray-chevron {
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.3s ease;
+}
+
+.tray-chevron--expanded {
+  transform: rotate(225deg);
+}
+
+.tray-content {
+  padding: 0 var(--space-lg) var(--space-lg);
+  overflow-y: auto;
+  touch-action: pan-y;
+  max-height: min(46vh, 320px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tray,
+  .tray-chevron {
+    transition: none;
+  }
+}
+
 /* ── Opacity Slider ─────────────────────────────────────────── */
 .opacity-control {
   display: flex;
@@ -2970,6 +3072,10 @@ html, body, #root {
     transform: translateX(-50%);
     max-width: 480px;
     width: 100%;
+  }
+
+  .tray-content {
+    max-height: min(60vh, 420px);
   }
 
   /* Sampling split: left (upload) / right (map) */
