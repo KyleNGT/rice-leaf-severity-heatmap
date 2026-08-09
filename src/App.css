@@ -1426,8 +1426,14 @@ html, body, #root {
    not `!important`: the library's own stylesheet is injected into <head> at
    runtime, so its order relative to this file isn't guaranteed — a
    two-class selector (specificity 0,0,2,0) reliably beats the library's
-   single-class rule (0,0,1,0) regardless of source order. */
-.align-stage .align-frame {
+   single-class rule (0,0,1,0) regardless of source order.
+   Grouped with .cam-stage .cam-frame (CameraCaptureModal's live
+   viewfinder) — same border/tint on the SAME rectangle geometry
+   (useFramedStageSize.js). .cam-frame supplies its own position/overflow/
+   scrim below since it has no library CropArea element to inherit them
+   from. */
+.align-stage .align-frame,
+.cam-stage .cam-frame {
   border: 3px solid #ffffff;
   background: rgba(0, 0, 0, 0.28);
 }
@@ -1435,15 +1441,21 @@ html, body, #root {
 /* Static blade-width guide: a dashed vertical rail centered in the framing
    rectangle, full height, width set by --align-guide-width-fraction (from
    ALIGN_GUIDE_WIDTH_FRACTION, applied as an inline custom property on
-   .align-stage in ImageAlignmentModal.jsx so the CSS and JS/export math share
-   one source of truth). PURELY VISUAL — this is guidance, not a sensor; see
-   the ALIGN_GUIDE_WIDTH_FRACTION comment in constants.js.
-   Relies on two properties of the library's own CropArea rule (react-easy-
-   crop.css) that make this safe to layer on: `overflow: hidden` clips the
-   guide flush to the frame's own edges (so it reads as exactly full-height,
-   never bleeding past the white border), and the dimming scrim is a
-   `box-shadow` keyed off `color`, which this pseudo-element never touches. */
-.align-stage .align-frame::before {
+   .align-stage/.cam-stage — see useFramedStageSize.js and
+   ImageAlignmentModal.jsx/CameraCaptureModal.jsx — so the CSS and JS/export
+   math share one source of truth). PURELY VISUAL — this is guidance, not a
+   sensor; see the ALIGN_GUIDE_WIDTH_FRACTION comment in constants.js.
+   On .align-frame this relies on two properties of the library's own
+   CropArea rule (react-easy-crop.css): `overflow: hidden` clips the guide
+   flush to the frame's own edges (so it reads as exactly full-height, never
+   bleeding past the white border), and the dimming scrim is a `box-shadow`
+   keyed off `color`, which this pseudo-element never touches. .cam-frame
+   below declares the equivalent `overflow: hidden` itself, since it has no
+   library element to borrow it from. One rule for both — the live
+   viewfinder and the mandatory aligner must show the IDENTICAL guide, never
+   two independently-tuned copies. */
+.align-stage .align-frame::before,
+.cam-stage .cam-frame::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1761,6 +1773,193 @@ html, body, #root {
   .align-actions,
   .align-alert-slot,
   .align-hint {
+    max-width: 480px;
+    width: 100%;
+    margin-inline: auto;
+  }
+}
+
+/* ── Live Camera Viewfinder (feeds the mandatory alignment crop above) ── */
+/* CameraCaptureModal — an in-app live-camera alternative to the hidden
+   <input capture="environment"> in SamplePanel.jsx, used when
+   cameraSupport.js's supportsLiveCamera() is true. Shows the SAME framing
+   rectangle + dashed blade-width guide as .align-overlay above (shared
+   geometry via useFramedStageSize.js, shared CSS via the grouped
+   .align-frame/.cam-frame rules above) so the farmer composes the shot
+   against the guide live instead of only seeing it after the fact in the
+   aligner. A captured photo still passes through that aligner afterward —
+   this screen never talks to the draft or the ML pipeline directly.
+   Rendered from App.jsx as a SIBLING of <SampleSheet>, same containing-block
+   reasoning as .align-overlay, so it redeclares the --upload-* token block
+   itself too (not in :root). */
+.cam-overlay {
+  --upload-canvas: #f9fafb;
+  --upload-card-border: #e5e7eb;
+  --upload-text: #212222;
+  --upload-text-muted: #6b7280;
+  --upload-emerald: #046307;
+  --upload-warning: #d7e051;
+  --upload-danger: #ed5d54;
+
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-loading);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom, 16px));
+  background: #0f172a;
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.cam-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.cam-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  min-height: 48px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-size: 16px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cam-title {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* flex-grow, matching .align-stage — a real "viewfinder" area, not locked
+   to the crop's own aspect ratio. */
+.cam-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #000000;
+}
+
+.cam-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Centered at the stage's own midpoint (no react-easy-crop to center it for
+   us here) and sized in JS from useFramedStageSize's frameSize, matching
+   .align-frame's on-screen box exactly. Draws its own dimming scrim and
+   clip, since — unlike .align-frame — there's no library CropArea element
+   supplying either for free (see the grouped border/tint rule above). */
+.cam-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  box-shadow: 0 0 0 9999em rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.cam-hint {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cam-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cam-error-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.cam-fallback-btn {
+  min-height: 48px;
+  padding: 12px var(--space-lg);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cam-actions {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+  padding-block: var(--space-sm);
+}
+
+/* >= 64px — larger than the 48px minimum touch target, matching how a
+   phone's own native camera app sizes its shutter for a confident one-tap
+   hit in the field. */
+.cam-shutter {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-full);
+  border: 4px solid #ffffff;
+  background: #ffffff;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 0.1s ease, opacity 0.2s ease;
+}
+
+.cam-shutter:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.cam-shutter:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Tablet+: matches .align-overlay's own breakpoint so the two screens size
+   identically in the flow. */
+@media (min-width: 768px) {
+  .cam-overlay {
+    padding: var(--space-lg);
+  }
+
+  .cam-hint,
+  .cam-actions {
     max-width: 480px;
     width: 100%;
     margin-inline: auto;

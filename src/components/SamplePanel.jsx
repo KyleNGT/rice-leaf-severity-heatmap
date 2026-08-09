@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { leafQualityWarning, photoDiagnosis } from '../utils/aggregateSample';
 import { MAX_IMAGES_PER_SAMPLE } from '../constants/constants';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
+import { supportsLiveCamera } from '../utils/cameraSupport';
 import DiseaseFindingsList from './DiseaseFindingsList';
 import MaskLayersIcon from './MaskLayersIcon';
 
@@ -36,6 +37,16 @@ import MaskLayersIcon from './MaskLayersIcon';
  * through, against one static framing rectangle, before it becomes a draft
  * image. See useAlignmentQueue.js.
  *
+ * Camera specifically prefers the live in-app viewfinder (CameraCaptureModal,
+ * rendered by App.jsx) when `supportsLiveCamera()` says the browser can do
+ * it — checked at CLICK time so it stays correct regardless of how the page
+ * was reached (e.g. LAN http dev, which is not a secure context). The
+ * hidden `<input capture="environment">` below is the fallback for both a
+ * non-secure context AND a live camera that fails at runtime (denied
+ * permission, no camera, camera busy) — see `onRegisterSystemCameraTrigger`,
+ * which lets App.jsx fire this input directly from CameraCaptureModal's own
+ * error state.
+ *
  * `bare`: when true, skip the outer .upload-panel/.upload-card
  * wrapper and the title — the parent (SampleSheet) supplies both.
  */
@@ -50,6 +61,8 @@ export default function SamplePanel({
   onDismissImageWarning,
   onDiscardDraft,
   onInspectMasks,
+  onOpenCamera,
+  onRegisterSystemCameraTrigger,
   canAddSample,
   coordWarning,
   disabled,
@@ -66,6 +79,17 @@ export default function SamplePanel({
 
   const sourcesDisabled = disabled || isMaxed || isImagesMaxed;
   const images = draft?.images ?? [];
+
+  // Lets App.jsx trigger THIS instance's hidden system-camera input as a
+  // fallback from CameraCaptureModal's error state, without a ref forwarded
+  // through two more components. Only one of SamplePanel/SampleSheet is ever
+  // mounted for the Sampling step at a time (desktop vs. mobile split in
+  // App.jsx), so there's never a stale second registration to worry about.
+  useEffect(() => {
+    if (!onRegisterSystemCameraTrigger) return undefined;
+    onRegisterSystemCameraTrigger(() => cameraRef.current?.click());
+    return () => onRegisterSystemCameraTrigger(null);
+  }, [onRegisterSystemCameraTrigger]);
 
   const handleFileChange = (source) => (e) => {
     const files = e.target.files;
@@ -88,7 +112,9 @@ export default function SamplePanel({
         <button
           type="button"
           className="upload-source-btn"
-          onClick={() => cameraRef.current?.click()}
+          onClick={() =>
+            supportsLiveCamera() && onOpenCamera ? onOpenCamera() : cameraRef.current?.click()
+          }
           disabled={sourcesDisabled}
         >
           <span>Camera</span>

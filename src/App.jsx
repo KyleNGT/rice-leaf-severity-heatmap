@@ -8,6 +8,7 @@ import ActionPanel from './components/ActionPanel';
 import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
 import ImageAlignmentModal from './components/ImageAlignmentModal';
+import CameraCaptureModal from './components/CameraCaptureModal';
 import MaskInspectorModal from './components/MaskInspectorModal';
 import SampleHistorySidebar from './components/SampleHistorySidebar';
 import { useExifGps } from './hooks/useExifGps';
@@ -157,6 +158,24 @@ export default function App() {
   // confirm — alignment often takes longer than the fix itself, so this lets
   // the two overlap instead of making the farmer wait twice.
   const pendingGpsPromiseRef = useRef(null);
+
+  // ── Live In-App Camera ──────────────────────────────────────
+  // CameraCaptureModal feeds the SAME alignment queue above — see
+  // handleCameraCapture below. `systemCameraTriggerRef` holds whichever
+  // SamplePanel instance is currently mounted's imperative "click my hidden
+  // <input capture> input" function (registered via
+  // onRegisterSystemCameraTrigger, SamplePanel.jsx), so the live camera's
+  // own error state (denied permission, no camera, camera busy) can fall
+  // back to the system camera without a ref threaded through SampleSheet.
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const systemCameraTriggerRef = useRef(null);
+  const handleRegisterSystemCameraTrigger = useCallback((fn) => {
+    systemCameraTriggerRef.current = fn;
+  }, []);
+  const handleUseSystemCamera = useCallback(() => {
+    setCameraOpen(false);
+    systemCameraTriggerRef.current?.();
+  }, []);
 
   // ── Mobile Center-Anchored Drawing Handlers ────────────────
   const handlePlacePoint = useCallback(() => mobileDrawerRef.current?.placePoint(), []);
@@ -347,6 +366,19 @@ export default function App() {
       alignQueue.enqueue(accepted, source);
     },
     [alignQueue, getLocation]
+  );
+
+  // Counterpart to the Camera/Gallery `<input>` onChange handlers in
+  // SamplePanel.jsx — CameraCaptureModal's shutter produces one File the
+  // exact same way a system-camera capture does, so it's funneled through
+  // the exact same handleImagesSelected above: same MAX_IMAGES_PER_SAMPLE
+  // cap, same 'camera'-sourced GPS fix, same alignment-queue enqueue.
+  const handleCameraCapture = useCallback(
+    (file) => {
+      setCameraOpen(false);
+      handleImagesSelected([file], 'camera');
+    },
+    [handleImagesSelected]
   );
 
   // ── Alignment Confirm / Cancel ──────────────────────────────
@@ -890,6 +922,8 @@ export default function App() {
             onDismissImageWarning={handleDismissImageWarning}
             onDiscardDraft={handleDiscardDraft}
             onInspectMasks={handleInspectMasks}
+            onOpenCamera={() => setCameraOpen(true)}
+            onRegisterSystemCameraTrigger={handleRegisterSystemCameraTrigger}
             canAddSample={canAddSample}
             coordWarning={coordWarning}
             disabled={isProcessing}
@@ -1032,6 +1066,8 @@ export default function App() {
             onDismissImageWarning={handleDismissImageWarning}
             onDiscardDraft={handleDiscardDraft}
             onInspectMasks={handleInspectMasks}
+            onOpenCamera={() => setCameraOpen(true)}
+            onRegisterSystemCameraTrigger={handleRegisterSystemCameraTrigger}
             canAddSample={canAddSample}
             coordWarning={coordWarning}
             disabled={isProcessing}
@@ -1103,6 +1139,22 @@ export default function App() {
           onConfirm={(croppedFile) => handleAlignedPhoto(croppedFile, alignQueue.currentFile)}
           onSkip={alignQueue.skipCurrent}
           onCancel={handleAlignCancel}
+        />
+      )}
+
+      {/* Live camera viewfinder — same "direct child of .app" reasoning as
+          the alignment modal above. Only reachable when SamplePanel's
+          Camera button found supportsLiveCamera() true at click time; its
+          own error state falls back to the hidden system-camera <input> via
+          handleUseSystemCamera. A captured photo feeds handleCameraCapture,
+          which enqueues it into the exact same alignment queue as any other
+          camera or gallery photo — this modal never talks to the draft
+          directly. */}
+      {cameraOpen && (
+        <CameraCaptureModal
+          onCapture={handleCameraCapture}
+          onCancel={() => setCameraOpen(false)}
+          onFallbackToSystemCamera={handleUseSystemCamera}
         />
       )}
 
