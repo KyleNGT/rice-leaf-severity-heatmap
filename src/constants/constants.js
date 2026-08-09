@@ -156,7 +156,7 @@ export const ALIGN_STAGE_INSET_FRACTION = 0.92;
  * photo complies; see the leaf-plausibility-guard comment above for the
  * consequence of that.
  */
-export const ALIGN_GUIDE_WIDTH_FRACTION = 0.2;
+export const ALIGN_GUIDE_WIDTH_FRACTION = 0.10;
 
 /**
  * JPEG encode quality for the cropped output. This blob is the measurement
