@@ -93,7 +93,7 @@ export default function HeatmapTray({
           )}
 
           <button className="btn btn-primary btn-full" onClick={onResumeSampling}>
-            ＋ Add More Samples
+            Add More Samples
           </button>
 
           {heatmapData && (
@@ -103,7 +103,7 @@ export default function HeatmapTray({
               onClick={onExportReport}
               disabled={isProcessing}
             >
-              ↓ Export PDF Report
+              Export PDF Report
             </button>
           )}
 

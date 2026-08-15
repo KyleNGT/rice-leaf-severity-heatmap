@@ -45,6 +45,7 @@ export default function SampleSheet(props) {
       >
         <span className="sheet-handle-bar" aria-hidden="true" />
         <span className="sheet-title">Add Plant Sample</span>
+        <span className={`sheet-chevron ${expanded ? 'sheet-chevron--expanded' : ''}`} aria-hidden="true" />
       </div>
 
       <div className="sheet-content">

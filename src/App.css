@@ -82,6 +82,11 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+:where(button, input, select, textarea, [role='button']):focus-visible {
+  outline: 2px solid var(--accent-emerald);
+  outline-offset: 2px;
+}
+
 /* ── App Shell ──────────────────────────────────────────────── */
 .app {
   position: relative;
@@ -137,10 +142,11 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 6px 12px;
+  border: 1px solid rgba(4, 99, 7, 0.22);
   border-radius: var(--radius-full);
   background: var(--accent-emerald-glow);
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--accent-emerald);
   white-space: nowrap;
@@ -175,18 +181,20 @@ html, body, #root {
 .stepper-item {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
   font-size: 0.7rem;
   font-weight: 500;
   color: var(--text-muted);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .stepper-item.active {
   background: var(--accent-emerald-glow);
+  border-color: rgba(4, 99, 7, 0.22);
   color: var(--accent-emerald);
   font-weight: 600;
 }
@@ -195,10 +203,27 @@ html, body, #root {
   color: var(--accent-emerald);
 }
 
+.stepper-index,
 .stepper-icon {
-  font-size: 0.85rem;
-  width: 20px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.64rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-index {
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.stepper-icon {
+  color: #ffffff;
+  background: var(--accent-emerald);
 }
 
 .stepper-connector {
@@ -358,7 +383,12 @@ html, body, #root {
   cursor: pointer;
   touch-action: manipulation;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-  transition: transform 0.1s ease;
+  transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+
+.map-enlarge-btn:hover,
+.map-back-btn:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
 }
 
 .map-enlarge-btn:active,
@@ -446,6 +476,7 @@ html, body, #root {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  position: relative;
 }
 
 .sheet-handle-bar {
@@ -458,6 +489,21 @@ html, body, #root {
 .sheet-title {
   font-size: 15px;
   font-weight: 600;
+}
+
+.sheet-chevron {
+  position: absolute;
+  right: var(--space-lg);
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.3s ease;
+}
+
+.sheet-chevron--expanded {
+  transform: rotate(225deg);
 }
 
 .sheet-content {
@@ -649,7 +695,7 @@ html, body, #root {
   background: #ffffff;
   border: 1px solid var(--upload-card-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
 }
 
 .upload-title {
@@ -661,6 +707,7 @@ html, body, #root {
 .upload-hint {
   margin-top: -4px;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--upload-text-muted);
   text-align: center;
 }
@@ -826,6 +873,11 @@ html, body, #root {
   font-size: 12px;
   font-weight: 500;
   color: var(--upload-danger);
+  background: rgba(237, 93, 84, 0.08);
+  border: 1px solid rgba(237, 93, 84, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  line-height: 1.4;
 }
 
 /* Provenance hint: how the coordinates were obtained */
@@ -834,6 +886,11 @@ html, body, #root {
   font-size: 12px;
   font-weight: 500;
   color: var(--upload-text-muted);
+  background: var(--upload-canvas);
+  border: 1px solid var(--upload-card-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  line-height: 1.35;
 }
 
 /* Status / Severity / Confidence — inline pills, one row */
@@ -971,6 +1028,11 @@ html, body, #root {
   border-left-color: var(--upload-emerald);
   border-radius: var(--radius-md);
   background: var(--upload-canvas);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.upload-photo-tile:hover {
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
 }
 
 .upload-photo-tile.is-analyzing {
@@ -1077,6 +1139,12 @@ html, body, #root {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.upload-photo-tile-remove:hover,
+.mask-inspect-btn:hover {
+  background: rgba(15, 23, 42, 0.07);
+  color: var(--upload-text);
+}
+
 /* Opens MaskInspectorModal for this photo. Placed BEFORE .upload-photo-tile-remove
    (not after) so remove stays the terminal, rightmost action and never shifts
    position depending on whether this button is present — muscle memory
@@ -1141,6 +1209,12 @@ html, body, #root {
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.upload-mini-btn:hover {
+  border-color: var(--upload-emerald);
+  background: rgba(4, 99, 7, 0.04);
 }
 
 .upload-mini-btn:active {
@@ -1161,7 +1235,7 @@ html, body, #root {
 .upload-summary-note {
   margin: 0;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--upload-text-muted);
 }
 
@@ -2235,18 +2309,19 @@ html, body, #root {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-lg);
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
 }
 
 .action-title {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   margin-bottom: var(--space-sm);
 }
 
 .action-desc {
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: var(--space-md);
@@ -2677,7 +2752,8 @@ html, body, #root {
   border-radius: var(--radius-md);
   padding: var(--space-sm) var(--space-md);
   animation: fadeIn 0.4s ease-out;
-  width: 200px;
+  width: 220px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
 }
 
 /* Disease layer filter — desktop only, see ColorLegend.jsx. Sits below the
@@ -2720,13 +2796,13 @@ html, body, #root {
 }
 
 .legend-title {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: block;
-  margin-bottom: var(--space-xs);
+  margin-bottom: 6px;
 }
 
 /* Gradient is set inline (style={{ background }}) from SES_COLORS in
@@ -2741,8 +2817,9 @@ html, body, #root {
 .legend-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* PDLA breakpoints for the active disease's own SES table — hidden on the
@@ -2751,9 +2828,9 @@ html, body, #root {
 .legend-pdla-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.55rem;
+  font-size: 0.58rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
   font-variant-numeric: tabular-nums;
 }
 
