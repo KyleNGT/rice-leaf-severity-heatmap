@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { HEATMAP_MIN_OPACITY, HEATMAP_MAX_OPACITY } from '../constants/constants';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import { useTrayDrag } from '../hooks/useTrayDrag';
@@ -30,9 +31,13 @@ export default function HeatmapTray({
   isProcessing,
 }) {
   const isMobile = useIsMobileViewport();
+  const [layerMenuOpen, setLayerMenuOpen] = useState(false);
   const { expanded, dragging, containerRef, handleRef, dragStyle, handleProps } = useTrayDrag({
     initialExpanded: true,
   });
+
+  const selectedLayer = availableLayers?.find((layer) => layer.key === heatmapLayer) ?? availableLayers?.[0];
+  const opacityPercent = Math.round(heatmapOpacity * 100);
 
   return (
     <div className="action-panel action-panel--tray">
@@ -48,83 +53,120 @@ export default function HeatmapTray({
           {...handleProps}
         >
           <span className="tray-handle-bar" aria-hidden="true" />
-          <span className="tray-title">Disease Pressure Heatmap</span>
           <span className={`tray-chevron ${expanded ? 'tray-chevron--expanded' : ''}`} aria-hidden="true" />
         </div>
 
         <div className="tray-content">
-          {/* Layer toggle — mobile only. On desktop this same control lives
-              on ColorLegend instead, since it was eating most of this
-              card's height and blocking the map underneath it. Hidden
-              entirely when the field has no disease reading at all, in
-              which case General is the only layer there is. */}
           {heatmapData && availableLayers?.length > 1 && isMobile && (
-            <div className="layer-toggle" role="group" aria-label="Heatmap layer">
-              {availableLayers.map((layer) => (
-                <button
-                  key={layer.key}
-                  type="button"
-                  className={`layer-toggle-btn ${heatmapLayer === layer.key ? 'layer-toggle-btn--active' : ''}`}
-                  onClick={() => onHeatmapLayerChange(layer.key)}
-                  aria-pressed={heatmapLayer === layer.key}
-                >
-                  {layer.name}
-                </button>
-              ))}
+            <div className="heatmap-layer-menu">
+              <button
+                type="button"
+                className="heatmap-layer-trigger"
+                onClick={() => setLayerMenuOpen((prev) => !prev)}
+                aria-expanded={layerMenuOpen}
+              >
+                <span>Heatmap Layer: {selectedLayer?.name ?? 'General Threat'}</span>
+                <span className={`heatmap-layer-caret ${layerMenuOpen ? 'is-open' : ''}`} aria-hidden="true">
+                  ▾
+                </span>
+              </button>
+
+              {layerMenuOpen && (
+                <div className="heatmap-layer-list" role="menu" aria-label="Heatmap layer options">
+                  {availableLayers.map((layer) => (
+                    <button
+                      key={layer.key}
+                      type="button"
+                      className={`heatmap-layer-option ${heatmapLayer === layer.key ? 'is-selected' : ''}`}
+                      onClick={() => {
+                        onHeatmapLayerChange(layer.key);
+                        setLayerMenuOpen(false);
+                      }}
+                    >
+                      <span className="heatmap-layer-option-icon" aria-hidden="true">
+                        {heatmapLayer === layer.key ? '✓' : '•'}
+                      </span>
+                      <span>{layer.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
           {heatmapData && (
-            <div className="opacity-control">
-              <label htmlFor="opacity-slider" className="opacity-label">
-                Overlay Opacity
-              </label>
+            <div className="opacity-panel">
+              <div className="opacity-header">
+                <span className="opacity-label">Overlay Opacity:</span>
+                <span className="opacity-value">{opacityPercent}%</span>
+              </div>
+
               <input
                 id="opacity-slider"
                 type="range"
                 min={HEATMAP_MIN_OPACITY * 100}
                 max={HEATMAP_MAX_OPACITY * 100}
-                value={Math.round(heatmapOpacity * 100)}
+                value={opacityPercent}
                 onChange={(e) => onOpacityChange(Number(e.target.value) / 100)}
                 className="opacity-slider"
+                style={{ '--percent': `${opacityPercent}%` }}
               />
-              <span className="opacity-value">{Math.round(heatmapOpacity * 100)}%</span>
             </div>
           )}
 
-          <button className="btn btn-primary btn-full" onClick={onResumeSampling}>
-            Add More Samples
-          </button>
+          <div className="actions-panel">
+            <h3 className="actions-title">Actions</h3>
 
-          {heatmapData && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-full"
-              onClick={onExportReport}
-              disabled={isProcessing}
-            >
-              Export PDF Report
+            <button className="btn btn-primary btn-full" onClick={onResumeSampling}>
+              <span className="btn-icon-plus" aria-hidden="true">＋</span>
+              Add More Samples
             </button>
-          )}
 
-          <button className="btn btn-secondary btn-full" onClick={onReset}>
-            <svg
-              className="btn-icon-svg"
-              viewBox="0 0 16 16"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M2 8a6 6 0 1 1 1.8 4.3" />
-              <path d="M2 12.5V8.5h4" />
-            </svg>
-            Start New Analysis
-          </button>
+            {heatmapData && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-full"
+                onClick={onExportReport}
+                disabled={isProcessing}
+              >
+                <svg
+                  className="btn-icon-svg"
+                  viewBox="0 0 16 16"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M4 2.5h5L12 5.5v8A1.5 1.5 0 0 1 10.5 15h-6A1.5 1.5 0 0 1 3 13.5v-9A1.5 1.5 0 0 1 4.5 3H4Z" />
+                  <path d="M9 2.5V6h3" />
+                </svg>
+                Export PDF Report
+              </button>
+            )}
+
+            <button className="btn btn-secondary btn-full" onClick={onReset}>
+              <svg
+                className="btn-icon-svg"
+                viewBox="0 0 16 16"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M2 8a6 6 0 1 1 1.8 4.3" />
+                <path d="M2 12.5V8.5h4" />
+              </svg>
+              Start New Analysis
+            </button>
+          </div>
         </div>
       </div>
     </div>
