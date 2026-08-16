@@ -75,9 +75,10 @@ export default function BoundaryDrawer({
       pathOptions: {
         color: '#10b981',
         fillColor: '#10b981',
-        fillOpacity: 0.15,
-        weight: 3,
-        dashArray: '8, 6',
+        fillOpacity: 0.08,    
+        weight: 2,            
+        dashArray: '8, 6',    
+        opacity: 0.35,        
       },
     });
 

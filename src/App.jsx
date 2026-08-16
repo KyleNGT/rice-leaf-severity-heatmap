@@ -1102,16 +1102,6 @@ export default function App() {
         isProcessing={isProcessing}
       />
 
-      {/* Color legend — visible when heatmap is shown */}
-      {currentStep === STEPS.HEATMAP && heatmapData && (
-        <ColorLegend
-          activeLayer={heatmapLayer}
-          layerName={availableLayers.find((l) => l.key === heatmapLayer)?.name}
-          availableLayers={availableLayers}
-          onLayerChange={setHeatmapLayer}
-        />
-      )}
-
       {/* Sample history — hidden left sidebar, Heatmap step only */}
       {currentStep === STEPS.HEATMAP && (
         <SampleHistorySidebar
