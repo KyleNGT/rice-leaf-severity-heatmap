@@ -379,6 +379,19 @@ export const ESRI_MAX_ZOOM = 22;
  */
 export const ESRI_MAX_NATIVE_ZOOM = 19;
 
+/**
+ * Two-finger map rotation (mobile, Sampling/Heatmap steps only — see
+ * MapController's touchRotate effect and leafletRotate.js). leaflet-rotate's
+ * TouchGestures handler calls `map.setBearing()` on any nonzero angle delta
+ * between the two touch points, so a plain pinch-zoom near north drifts the
+ * bearing by a couple of degrees with no gesture actually intended as a
+ * rotate. installBearingSnap() clamps any requested bearing within this many
+ * degrees of 0 down to exactly 0, so incidental wobble near north is a no-op
+ * while a deliberate twist past the threshold still rotates (with a small
+ * jump at the boundary — normal deadzone feel).
+ */
+export const MAP_BEARING_SNAP_DEG = 4;
+
 // ── Geolocation ──────────────────────────────────────────────
 /** Max time to wait for a live GPS fix during camera capture. */
 export const GEO_TIMEOUT_MS = 10000;

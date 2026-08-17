@@ -9,6 +9,7 @@ import {
   BOUNDARY_CASING_STYLE,
   BOUNDARY_HEATMAP_FILL_OPACITY,
 } from '../constants/constants';
+import { installBearingSnap } from '../utils/leafletRotate';
 
 /**
  * ============================================================
@@ -65,6 +66,28 @@ export default function MapController({
       clearTimeout(timeout);
     };
   }, [map, currentStep, isMobile, mapFullscreen]);
+
+  // Two-finger map rotation (leaflet-rotate) — allowed only in Sampling and
+  // Heatmap, never in Boundary. Geoman explicitly does not support drawing
+  // or editing on a rotated map (https://github.com/geoman-io/leaflet-geoman/discussions/1097),
+  // so rather than betting on polygons being the one shape that happens to
+  // still work, bearing is forced back to 0 the moment the step leaves
+  // Sampling/Heatmap — a rotated map is never handed to Geoman.
+  // installBearingSnap is idempotent and cheap to call every render; doing it
+  // here (rather than a one-time effect) keeps it beside the gating logic it
+  // exists to support.
+  useEffect(() => {
+    if (!map?.touchRotate) return;
+    installBearingSnap(map);
+
+    const allowed = currentStep === STEPS.SAMPLING || currentStep === STEPS.HEATMAP;
+    if (allowed) {
+      map.touchRotate.enable();
+    } else {
+      map.touchRotate.disable();
+      if (map.getBearing() !== 0) map.setBearing(0);
+    }
+  }, [map, currentStep]);
 
   // Fit + lock the map to the field boundary while sampling
   useEffect(() => {
@@ -155,6 +178,12 @@ export default function MapController({
   // does this shift in screen-pixel space, which is exact at any zoom —
   // unlike `flyToBounds` with padding, whose viewport-minus-padding math
   // goes negative (and returns a garbage zoom) on a narrow window.
+  //
+  // NOTE: `map.project`'s pixel space is unrotated CRS space, not screen
+  // space — under a nonzero bearing this east-biased shift would no longer
+  // land east on screen. Harmless today because focusOffsetX is 0 on mobile
+  // (the only surface rotation is enabled on; see MapView), so shift is
+  // always 0 there. Revisit this if desktop rotation is ever enabled.
   useEffect(() => {
     if (!map || !focusTarget) return;
     if (focusTarget.seq === lastFocusSeq.current) return;

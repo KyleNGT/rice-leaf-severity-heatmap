@@ -435,6 +435,58 @@ html, body, #root {
   left: var(--space-sm);
 }
 
+/* ── Map Bearing Control (reset-to-north) ────────────────────── */
+/* Rendered inside <MapContainer> itself (see MapBearingControl.jsx), unlike
+   .map-enlarge-btn/.map-back-btn above which sit in App.jsx's map-box
+   wrapper outside the Leaflet container. That means this button is a DOM
+   sibling of Leaflet's own panes rather than fully above them, so its
+   z-index has to clear Leaflet's internal pane stack (popupPane peaks at
+   700) — the shared --z-* tokens are scoped to this app's own chrome
+   layers and don't need to account for that, hence the literal value. */
+.map-compass-btn-wrapper {
+  position: absolute;
+  z-index: 750;
+  bottom: var(--space-sm);
+  right: var(--space-sm);
+}
+
+.map-compass-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #212222;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+
+.map-compass-btn:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+}
+
+.map-compass-btn:active {
+  transform: scale(0.96);
+}
+
+.map-compass-btn__needle {
+  display: block;
+  flex-shrink: 0;
+  /* Rotation angle is set inline per-frame from live bearing state
+     (MapBearingControl.jsx) — this just makes the change animate. */
+  transition: transform 0.1s linear;
+}
+
 /* ── Map Footer (Step 2 — sample counter + Generate Heatmap) ─── */
 .map-footer {
   display: flex;

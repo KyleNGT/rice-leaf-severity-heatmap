@@ -1,6 +1,12 @@
 import { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, CircleMarker, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+// Side-effect import — patches Leaflet core with rotation support (rotate/
+// bearing/touchRotate options, setBearing/getBearing methods). Must run
+// before the <MapContainer> below constructs its L.map() instance; see the
+// module's own docblock for why this needs its own leafletGlobal.js import
+// ahead of it.
+import '../utils/leafletRotate';
 import {
   DEFAULT_CENTER,
   DEFAULT_ZOOM,
@@ -15,6 +21,7 @@ import {
 import BoundaryDrawer from './BoundaryDrawer';
 import MobileBoundaryDrawer from './MobileBoundaryDrawer';
 import MapController from './MapController';
+import MapBearingControl from './MapBearingControl';
 import SampleMarker from './SampleMarker';
 import HeatmapOverlay from './HeatmapOverlay';
 import DraftMarker from './DraftMarker';
@@ -120,6 +127,18 @@ export default function MapView({
       tap={true}
       touchZoom={true}
       dragging={true}
+      // leaflet-rotate options (see leafletRotate.js's side-effect import
+      // above). rotateControl/shiftKeyRotate both default to true in the
+      // plugin and must be explicitly disabled — the design system hides
+      // every plugin's own default toolbar in favor of themed buttons
+      // (MapBearingControl below is the rotateControl replacement).
+      // touchRotate starts disabled; MapController toggles it per-step
+      // imperatively (react-leaflet only applies these props at creation).
+      rotate={true}
+      bearing={0}
+      touchRotate={false}
+      rotateControl={false}
+      shiftKeyRotate={false}
     >
       <TileLayer
         url={ESRI_TILE_URL}
@@ -128,7 +147,8 @@ export default function MapView({
         maxNativeZoom={ESRI_MAX_NATIVE_ZOOM}
       />
 
-      {/* Keeps the persistent map correctly sized/framed across steps */}
+      {/* Keeps the persistent map correctly sized/framed across steps,
+          including the touchRotate step gate — see its effect there */}
       <MapController
         currentStep={currentStep}
         boundary={boundary}
@@ -141,6 +161,12 @@ export default function MapView({
         focusTarget={isHeatmap && selection?.origin === 'sidebar' ? selection : null}
         focusOffsetX={isMobile ? 0 : HISTORY_SIDEBAR_OFFSET_PX}
       />
+
+      {/* Reset-to-north — mobile only (rotation is a touch gesture; see
+          MapView's rotate options above), and only visible while the map is
+          actually rotated (Sampling/Heatmap steps; see MapController's
+          touchRotate gate) */}
+      <MapBearingControl isMobile={isMobile} />
 
       {/* Boundary drawing tool — active only during boundary step */}
       <BoundaryDrawer

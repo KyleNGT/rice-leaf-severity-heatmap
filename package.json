@@ -17,6 +17,7 @@
     "exifreader": "^4.41.0",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
+    "leaflet-rotate": "^0.2.8",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-easy-crop": "^6.2.3",
