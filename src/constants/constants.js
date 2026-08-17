@@ -475,6 +475,85 @@ export const SES_COLORS = [
  * ever contain. */
 export const HEATMAP_LAYER_GENERAL = 'general';
 
+// Draft pin color (DraftMarker.jsx) while a plant has no measurement yet
+// (photos still analyzing, or all failed/flagged). Deliberately a neutral
+// grey and NOT SES_COLORS[0]: a genuinely healthy plant legitimately measures
+// 0% PDLA and colors green, so "unknown" must never share a color with
+// "measured healthy" — the two are gated on severity === null vs. 0.
+export const DRAFT_MARKER_PENDING_COLOR = '#9ca3af';
+
+// ── Field Boundary Styling ──────────────────────────────────────
+// Live-map boundary appearance. Brand-emerald stroke (matches --accent-emerald
+// in App.css) — dark enough to separate from mid-tone field greens while
+// staying on-brand. NOT paired with the .field-boundary-path CSS filter here:
+// that drop-shadow duplicates the WHOLE rendered shape (fill included), and
+// this fill is only 10% opaque, so a white shadow stacked on top of it
+// visually overwhelms the faint dark fill (renders near-white instead of
+// dark) — the filter can't tell fill from stroke since both are one <path>.
+// The white edge instead comes from BOUNDARY_CASING_STYLE below: a real,
+// wider, unfilled polygon painted directly beneath this one (MapController.jsx)
+// — genuine vector layering, the same two-pass principle renderFieldFigure.js
+// uses for the PDF export, just done with two shapes instead of a CSS hack.
+export const BOUNDARY_STYLE = {
+  color: '#046307',
+  weight: 3,
+  opacity: 1,
+  fillColor: '#0b1220',
+  fillOpacity: 0.1,
+};
+
+// Decorative white casing painted directly beneath BOUNDARY_STYLE's polygon
+// (MapController.jsx), wider by 2px so it peeks out ~1px on each side as a
+// crisp edge. No fill (avoids the wash-out this is fixing) and pmIgnore so
+// Geoman's layer registry — walked by BoundaryDrawer's syncBoundaryFromMap and
+// MapController's Heatmap fill-toggle — never mistakes it for the real,
+// user-editable boundary.
+export const BOUNDARY_CASING_STYLE = {
+  color: '#ffffff',
+  weight: 5,
+  opacity: 1,
+  fill: false,
+  interactive: false,
+  pmIgnore: true,
+};
+
+// In-progress drawing: same green, but dashed and lighter, so an uncommitted
+// shape never looks like a committed one. Safe to keep the .field-boundary-path
+// filter (App.css) here, unlike BOUNDARY_STYLE above — this is a Polyline with
+// fill:false, so there's no translucent interior for the shadow to wash out;
+// the filter only ever touches the stroke's own opaque pixels.
+export const BOUNDARY_DRAW_STYLE = {
+  color: '#046307',
+  weight: 3,
+  opacity: 0.95,
+  dashArray: '8, 6',
+  fill: false,
+  className: 'field-boundary-path',
+};
+
+// Geoman's rubber-band segment from the last vertex to the cursor. Opacity is
+// higher than BOUNDARY_DRAW_STYLE's — a dark line washes out faster than a
+// light one at the same opacity, so this needs to stay closer to solid.
+export const BOUNDARY_HINT_STYLE = {
+  color: '#046307',
+  weight: 2,
+  opacity: 0.85,
+  dashArray: '4, 6',
+  className: 'field-boundary-path',
+};
+
+// Placed-vertex dots (mobile CircleMarker).
+export const BOUNDARY_VERTEX_STYLE = {
+  color: '#046307',
+  fillColor: '#ffffff',
+  fillOpacity: 1,
+  weight: 2,
+};
+
+// fillOpacity applied to the committed boundary on the Heatmap step, so the
+// dark fill can't tint the SES ramp painted underneath it.
+export const BOUNDARY_HEATMAP_FILL_OPACITY = 0;
+
 // ── Heatmap Rendering ────────────────────────────────────────
 export const HEATMAP_DEFAULT_OPACITY = 0.65;
 export const HEATMAP_MIN_OPACITY = 0.2;

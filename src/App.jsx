@@ -954,6 +954,7 @@ export default function App() {
                 heatmapLayer={heatmapLayer}
                 heatmapOpacity={heatmapOpacity}
                 draftSample={draftSample}
+                draftSummary={draftSummary}
                 mapFullscreen={mapFullscreen}
                 drawingAction={drawingAction}
                 onDrawingActionChange={setDrawingAction}

@@ -2,6 +2,7 @@ import { useEffect, useImperativeHandle, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import '@geoman-io/leaflet-geoman-free';
 import '@geoman-io/leaflet-geoman-free/dist/leaflet-geoman.css';
+import { BOUNDARY_STYLE, BOUNDARY_DRAW_STYLE, BOUNDARY_HINT_STYLE } from '../constants/constants';
 
 /**
  * ============================================================
@@ -72,14 +73,9 @@ export default function BoundaryDrawer({
         opacity: 1,
         fillOpacity: 0.8,
       },
-      pathOptions: {
-        color: '#10b981',
-        fillColor: '#10b981',
-        fillOpacity: 0.08,    
-        weight: 2,            
-        dashArray: '8, 6',    
-        opacity: 0.35,        
-      },
+      pathOptions: BOUNDARY_STYLE,
+      templineStyle: BOUNDARY_DRAW_STYLE,
+      hintlineStyle: BOUNDARY_HINT_STYLE,
     });
 
     // HIDE the default Geoman toolbar — we use custom buttons

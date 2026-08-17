@@ -348,6 +348,21 @@ html, body, #root {
   display: none !important;
 }
 
+/* Thin solid white edge under the brand-green boundary stroke. Zero blur
+   radius is what makes each drop-shadow a hard edge rather than a glow; the
+   four cardinal offsets compound to close the diagonals. Keeps a dark green
+   line readable over shadowed canopy — the same two-tone principle
+   renderFieldFigure.js uses for the PDF export, inverted for a dark stroke. */
+.field-boundary-path {
+  filter: drop-shadow(1px 0 0 #ffffff) drop-shadow(-1px 0 0 #ffffff)
+    drop-shadow(0 1px 0 #ffffff) drop-shadow(0 -1px 0 #ffffff);
+}
+
+/* Geoman's default vertex handle is white with a #3388ff border. */
+.leaflet-container .marker-icon {
+  border-color: #046307;
+}
+
 /* ── Mobile Center-Anchored Crosshair ───────────────────────── */
 .map-crosshair {
   position: absolute;
@@ -2615,6 +2630,12 @@ html, body, #root {
 
 .pin-marker {
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+/* Only present on a pin's first appearance (DraftMarker.jsx) — split from
+   .pin-marker above so a severity-driven color change, which rebuilds the
+   divIcon, doesn't replay the drop-in animation on every analysis result. */
+.pin-marker--drop {
   animation: pinDrop 0.4s ease-out;
 }
 

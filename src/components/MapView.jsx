@@ -60,6 +60,7 @@ export default function MapView({
   heatmapLayer,
   heatmapOpacity,
   draftSample,
+  draftSummary,
   mapFullscreen,
   drawingAction,
   onDrawingActionChange,
@@ -214,7 +215,7 @@ export default function MapView({
       )}
 
       {/* Live preview pin for the in-progress draft sample */}
-      <DraftMarker draft={draftSample} />
+      <DraftMarker draft={draftSample} summary={draftSummary} />
     </MapContainer>
   );
 }
