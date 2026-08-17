@@ -555,9 +555,12 @@ export const BOUNDARY_VERTEX_STYLE = {
 export const BOUNDARY_HEATMAP_FILL_OPACITY = 0;
 
 // ── Heatmap Rendering ────────────────────────────────────────
-export const HEATMAP_DEFAULT_OPACITY = 0.65;
+// HeatmapControls.jsx's opacity slider maps its whole track onto
+// [HEATMAP_MIN_OPACITY, HEATMAP_MAX_OPACITY] — HEATMAP_DEFAULT_OPACITY must
+// stay inside that interval or the thumb renders off the track.
 export const HEATMAP_MIN_OPACITY = 0.2;
 export const HEATMAP_MAX_OPACITY = 0.95;
+export const HEATMAP_DEFAULT_OPACITY = HEATMAP_MAX_OPACITY;
 
 // ── Application Steps ────────────────────────────────────────
 export const STEPS = {

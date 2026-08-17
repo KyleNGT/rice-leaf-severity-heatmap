@@ -18,7 +18,7 @@ import { useEffect, useRef } from 'react';
  * bug; this component deliberately does not repeat it.
  *
  * Pure presentation — formats nothing. `title`/`subtitle` arrive
- * already-formatted from the caller (SamplePanel or SampleHistorySidebar),
+ * already-formatted from the caller (SamplePanel or SampleHistoryList),
  * which each already have their own severity/diagnosis formatting for
  * their own tiles.
  *
