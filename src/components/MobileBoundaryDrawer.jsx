@@ -2,6 +2,7 @@ import { useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import { useMap, CircleMarker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import '@geoman-io/leaflet-geoman-free';
+import { BOUNDARY_STYLE, BOUNDARY_DRAW_STYLE, BOUNDARY_VERTEX_STYLE } from '../constants/constants';
 
 /**
  * ============================================================
@@ -24,21 +25,6 @@ import '@geoman-io/leaflet-geoman-free';
  * remove modes — driven by BoundaryDrawer — recognize and can
  * operate on it exactly like a polygon Geoman drew itself.
  */
-const BOUNDARY_PATH_OPTIONS = {
-  color: '#10b981',
-  fillColor: '#10b981',
-  fillOpacity: 0.15,
-  weight: 3,
-  dashArray: '8, 6',
-};
-
-const VERTEX_MARKER_OPTIONS = {
-  color: '#10b981',
-  fillColor: '#10b981',
-  fillOpacity: 1,
-  weight: 2,
-};
-
 export default function MobileBoundaryDrawer({
   isActive,
   drawerRef,
@@ -74,7 +60,7 @@ export default function MobileBoundaryDrawer({
   const finishShape = useCallback(() => {
     if (!map || vertices.length < 3) return;
     const latlngs = vertices.map((v) => [v.lat, v.lng]);
-    const layer = L.polygon(latlngs, BOUNDARY_PATH_OPTIONS).addTo(map);
+    const layer = L.polygon(latlngs, BOUNDARY_STYLE).addTo(map);
     onBoundaryCreated(layer.toGeoJSON());
     setVertices([]);
   }, [map, vertices, onBoundaryCreated]);
@@ -90,10 +76,10 @@ export default function MobileBoundaryDrawer({
   return (
     <>
       {vertices.length >= 2 && (
-        <Polyline positions={vertices.map((v) => [v.lat, v.lng])} pathOptions={BOUNDARY_PATH_OPTIONS} />
+        <Polyline positions={vertices.map((v) => [v.lat, v.lng])} pathOptions={BOUNDARY_DRAW_STYLE} />
       )}
       {vertices.map((v, i) => (
-        <CircleMarker key={i} center={[v.lat, v.lng]} radius={8} pathOptions={VERTEX_MARKER_OPTIONS} />
+        <CircleMarker key={i} center={[v.lat, v.lng]} radius={8} pathOptions={BOUNDARY_VERTEX_STYLE} />
       ))}
     </>
   );

@@ -217,7 +217,9 @@ export default function ActionPanel({
   }
 
   // ── Step 3: Heatmap ────────────────────────────────────────
-  if (currentStep === STEPS.HEATMAP) {
+  // Mobile only — the desktop control set lives in MapSidebar's Heatmap
+  // tab instead, beside the map rather than floating over it.
+  if (currentStep === STEPS.HEATMAP && isMobile) {
     return (
       <HeatmapTray
         onResumeSampling={onResumeSampling}

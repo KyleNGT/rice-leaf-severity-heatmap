@@ -3,7 +3,7 @@
  * they render inconsistently across Android builds. Stacked-parallelogram
  * "layers" mark, the conventional glyph for staged/intermediate output
  * (Phase 1 leaf mask, Phase 2 disease mask). Shared by the sampling photo
- * tile (SamplePanel.jsx) and the Step 3 history row (SampleHistorySidebar.jsx)
+ * tile (SamplePanel.jsx) and the Step 3 history row (SampleHistoryList.jsx)
  * so both show the identical mark, same reasoning as ImageAlignmentModal's
  * AlertTriangleIcon.
  */

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { CircleMarker, Popup, Tooltip } from 'react-leaflet';
+import { Marker, Popup, Tooltip } from 'react-leaflet';
+import L from 'leaflet';
 import { sesToColor, sampleSesForLayer, pdlaToSes } from '../utils/sesScale';
 import { HEATMAP_LAYER_GENERAL } from '../constants/constants';
 
@@ -167,16 +168,18 @@ export default function SampleMarker({
     };
   }, [onSelect, sample.id]);
 
+  // Create a divIcon to embed the number
+  const markerIcon = L.divIcon({
+    html: `<div style="display:flex;align-items:center;justify-content:center;width:${isSelected ? 26 : 20}px;height:${isSelected ? 26 : 20}px;border-radius:50%;background:${color};border:${isSelected ? '4px solid #111827' : '2px solid #ffffff'};color:#ffffff;font-size:${isSelected ? 14 : 11}px;font-weight:700;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,0.2);">${index + 1}</div>`,
+    iconSize: [isSelected ? 26 : 20, isSelected ? 26 : 20],
+    iconAnchor: [isSelected ? 13 : 10, isSelected ? 13 : 10],
+    className: '',
+  });
+
   return (
-    <CircleMarker
-      center={[sample.lat, sample.lng]}
-      radius={isSelected ? 13 : 10}
-      pathOptions={{
-        color: isSelected ? '#111827' : '#ffffff',
-        weight: isSelected ? 4 : 2,
-        fillColor: color,
-        fillOpacity: 0.9,
-      }}
+    <Marker
+      position={[sample.lat, sample.lng]}
+      icon={markerIcon}
       eventHandlers={eventHandlers}
     >
       {onSelect ? (
@@ -188,6 +191,6 @@ export default function SampleMarker({
           <SampleSummary sample={sample} index={index} color={color} />
         </Popup>
       )}
-    </CircleMarker>
+    </Marker>
   );
 }

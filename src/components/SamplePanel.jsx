@@ -150,6 +150,15 @@ export default function SamplePanel({
     // precisely the one where the user most needs to see what the model
     // found, so the inspector must stay reachable from an is-flagged tile.
     const hasMasks = !!image.result?.masks;
+    const tileStatusText = image.analyzing
+      ? 'Analyzing...'
+      : image.error
+        ? 'Analysis failed'
+        : flagged
+          ? 'Check framing'
+          : severity != null
+            ? `Severity: ${severity.toFixed(1)}%`
+            : 'No result';
 
     let stateClass = 'is-ok';
     if (image.analyzing) stateClass = 'is-analyzing';
@@ -166,17 +175,7 @@ export default function SamplePanel({
         >
           <img className="upload-photo" src={image.thumbnail} alt={`Rice leaf photo ${index + 1}`} />
           <span className="upload-photo-tile-info">
-            <span className="upload-photo-tile-badge">
-              {image.analyzing
-                ? '…'
-                : image.error
-                  ? '⚠'
-                  : flagged
-                    ? '⚠'
-                    : severity != null
-                      ? `Severity: ${severity.toFixed(1)}%`
-                      : '—'}
-            </span>
+            <span className="upload-photo-tile-badge">{tileStatusText}</span>
             {showDiagnosis && (
               <span className="upload-photo-tile-diagnosis">
                 {diagnosis ? diagnosis.displayName : 'Healthy'}
@@ -218,12 +217,12 @@ export default function SamplePanel({
           onClick={() => onRemoveImage(image.id)}
           aria-label={`Remove photo ${index + 1}`}
         >
-          ✕
+          X
         </button>
 
         {(image.error || flagged) && (
           <div className="upload-photo-tile-note">
-            <p className="upload-warning">⚠ {image.error || warning}</p>
+            <p className="upload-warning">Warning: {image.error || warning}</p>
             <div className="upload-photo-tile-actions">
               {image.error && (
                 <button
@@ -295,13 +294,14 @@ export default function SamplePanel({
 
       {summary.analyzingCount > 0 && (
         <p className="upload-analysis-loading">
-          Analyzing {summary.analyzingCount} of {summary.totalCount} photos…
+          Analyzing {summary.analyzingCount} of {summary.totalCount} photos...
         </p>
       )}
 
       {summary.analyzingCount === 0 && summary.usableCount === 0 && (
         <p className="upload-warning">
-          ⚠ None of these photos could be analyzed. Retake at least one to save this plant.
+          Warning: None of these photos could be analyzed. Retake at least one to save this
+          plant.
         </p>
       )}
 
@@ -356,7 +356,7 @@ export default function SamplePanel({
 
       {backendStatus === 'unreachable' && (
         <p className="upload-warning">
-          ⚠ Cannot reach the analysis server right now. Photos can still be added, but
+          Warning: Cannot reach the analysis server right now. Photos can still be added, but
           analysis will fail until it's back — try again in a moment.
         </p>
       )}
@@ -394,7 +394,9 @@ export default function SamplePanel({
 
           {plantSummary}
 
-          {draft.locating && <p className="upload-analysis-loading">📍 Getting your location…</p>}
+          {draft.locating && (
+            <p className="upload-analysis-loading">Getting your location...</p>
+          )}
 
           <div className="upload-coords">
             <div className="upload-field">
@@ -431,12 +433,12 @@ export default function SamplePanel({
           </div>
 
           {locationSourceLabel && !draft.locating && (
-            <p className="upload-location-source">📍 {locationSourceLabel}</p>
+            <p className="upload-location-source">Location source: {locationSourceLabel}</p>
           )}
 
-          {draft.locationError && <p className="upload-warning">⚠ {draft.locationError}</p>}
+          {draft.locationError && <p className="upload-warning">Warning: {draft.locationError}</p>}
 
-          {coordWarning && <p className="upload-warning">⚠ {coordWarning}</p>}
+          {coordWarning && <p className="upload-warning">Warning: {coordWarning}</p>}
 
           <div className="upload-actions-row">
             <button
@@ -469,7 +471,7 @@ export default function SamplePanel({
         onClick={() => setLightboxSrc(null)}
         aria-label="Close full-size photo"
       >
-        ✕
+        ×
       </button>
     </div>
   );

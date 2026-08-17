@@ -1,7 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { STEPS, DEFAULT_ZOOM, SAMPLING_PAN_BOUNDS_PADDING } from '../constants/constants';
+import {
+  STEPS,
+  DEFAULT_ZOOM,
+  SAMPLING_PAN_BOUNDS_PADDING,
+  BOUNDARY_STYLE,
+  BOUNDARY_CASING_STYLE,
+  BOUNDARY_HEATMAP_FILL_OPACITY,
+} from '../constants/constants';
 
 /**
  * ============================================================
@@ -39,6 +46,10 @@ export default function MapController({
   // the SAME plant just because the offset changed. Only an actual new
   // selection — a bumped `seq` — should move the camera.
   const lastFocusSeq = useRef(0);
+  // The decorative white casing polygon painted beneath the real boundary —
+  // see the effect below and BOUNDARY_CASING_STYLE's doc comment for why
+  // this can't just be a CSS filter on the boundary polygon itself.
+  const casingLayerRef = useRef(null);
 
   // Re-measure the map whenever its container is resized by a layout change
   useEffect(() => {
@@ -68,6 +79,66 @@ export default function MapController({
     } else {
       map.setMaxBounds(null);
     }
+  }, [map, currentStep, boundary]);
+
+  // Paints/moves the white casing polygon directly beneath the real boundary
+  // — genuine vector layering rather than a CSS filter, since a filter on the
+  // boundary's own translucent fill washes it out to near-white (see
+  // BOUNDARY_CASING_STYLE's comment in constants.js). Rebuilt from `boundary`
+  // GeoJSON rather than read off the Geoman layer, so it stays correct
+  // whether the shape came from BoundaryDrawer's Geoman flow or
+  // MobileBoundaryDrawer's plain L.polygon. pmIgnore (set on the style
+  // object) keeps this out of Geoman's own layer registry, so it can never be
+  // mistaken for the real, user-editable boundary by the effect below or by
+  // BoundaryDrawer's syncBoundaryFromMap.
+  useEffect(() => {
+    if (!map) return;
+
+    if (!boundary) {
+      if (casingLayerRef.current) {
+        map.removeLayer(casingLayerRef.current);
+        casingLayerRef.current = null;
+      }
+      return;
+    }
+
+    const [sourceLayer] = L.geoJSON(boundary).getLayers();
+    const latlngs = sourceLayer?.getLatLngs();
+    if (!latlngs) return;
+
+    if (casingLayerRef.current) {
+      casingLayerRef.current.setLatLngs(latlngs);
+    } else {
+      casingLayerRef.current = L.polygon(latlngs, BOUNDARY_CASING_STYLE).addTo(map);
+    }
+    casingLayerRef.current.bringToBack();
+  }, [map, boundary]);
+
+  // Drop the casing layer if this controller instance is ever torn down
+  // (the map itself is persistent — see the file docblock — but this guards
+  // against a future remount).
+  useEffect(() => {
+    return () => {
+      if (casingLayerRef.current) {
+        map?.removeLayer(casingLayerRef.current);
+        casingLayerRef.current = null;
+      }
+    };
+  }, [map]);
+
+  // The boundary is ONE persistent layer created in Step 1 and never
+  // remounted, so the Heatmap step's SES raster would otherwise sit under
+  // the dark fill. Looked up via Geoman's layer registry (same approach as
+  // BoundaryDrawer's syncBoundaryFromMap) rather than a captured ref, since
+  // it also finds a polygon built by MobileBoundaryDrawer.
+  useEffect(() => {
+    if (!map || !boundary || !map.pm) return;
+    const layers = map.pm.getGeomanLayers().filter((l) => !l._pmTempLayer);
+    const poly = layers[layers.length - 1];
+    poly?.setStyle?.({
+      fillOpacity:
+        currentStep === STEPS.HEATMAP ? BOUNDARY_HEATMAP_FILL_OPACITY : BOUNDARY_STYLE.fillOpacity,
+    });
   }, [map, currentStep, boundary]);
 
   // Fly to a plant picked in the Sample History sidebar. Keyed on `seq`

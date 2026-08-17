@@ -61,6 +61,11 @@
   /* Mobile bottom sheet peek height (collapsed) — shared with the
      floating .mobile-sample-actions bar so they stay in sync. */
   --sheet-peek: 64px;
+
+  /* Step 3 left sidebar (MapSidebar) width — shared between the panel
+     itself and the bubble's open-state offset so they can't disagree.
+     Widened on desktop inside the 768px media query below. */
+  --sidebar-w: min(86vw, 340px);
 }
 
 *,
@@ -80,6 +85,11 @@ html, body, #root {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+:where(button, input, select, textarea, [role='button']):focus-visible {
+  outline: 2px solid var(--accent-emerald);
+  outline-offset: 2px;
 }
 
 /* ── App Shell ──────────────────────────────────────────────── */
@@ -110,25 +120,28 @@ html, body, #root {
 /* ── Header ─────────────────────────────────────────────────── */
 .app-header {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: 12px;
+  left: 12px;
+  right: 12px;
   z-index: var(--z-header);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-glass);
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-subtle);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
 .app-title {
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   white-space: nowrap;
+  color: var(--text-primary);
 }
 
 /* ── Stepper Bar ────────────────────────────────────────────── */
@@ -137,13 +150,15 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
-  background: var(--accent-emerald-glow);
-  font-size: 0.7rem;
-  font-weight: 600;
+  padding: 7px 12px;
+  border: 1px solid rgba(4, 99, 7, 0.28);
+  border-radius: 999px;
+  background: rgba(223, 255, 227, 0.7);
+  font-size: 0.72rem;
+  font-weight: 700;
   color: var(--accent-emerald);
   white-space: nowrap;
+  box-shadow: inset 0 0 0 1px rgba(4, 99, 7, 0.05);
 }
 
 .stepper-mobile-text {
@@ -175,18 +190,20 @@ html, body, #root {
 .stepper-item {
   display: flex;
   align-items: center;
-  gap: var(--space-xs);
-  padding: 4px 10px;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid transparent;
   border-radius: var(--radius-full);
   font-size: 0.7rem;
   font-weight: 500;
   color: var(--text-muted);
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   white-space: nowrap;
 }
 
 .stepper-item.active {
   background: var(--accent-emerald-glow);
+  border-color: rgba(4, 99, 7, 0.22);
   color: var(--accent-emerald);
   font-weight: 600;
 }
@@ -195,10 +212,27 @@ html, body, #root {
   color: var(--accent-emerald);
 }
 
+.stepper-index,
 .stepper-icon {
-  font-size: 0.85rem;
-  width: 20px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 0.64rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-index {
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.stepper-icon {
+  color: #ffffff;
+  background: var(--accent-emerald);
 }
 
 .stepper-connector {
@@ -319,6 +353,21 @@ html, body, #root {
   display: none !important;
 }
 
+/* Thin solid white edge under the brand-green boundary stroke. Zero blur
+   radius is what makes each drop-shadow a hard edge rather than a glow; the
+   four cardinal offsets compound to close the diagonals. Keeps a dark green
+   line readable over shadowed canopy — the same two-tone principle
+   renderFieldFigure.js uses for the PDF export, inverted for a dark stroke. */
+.field-boundary-path {
+  filter: drop-shadow(1px 0 0 #ffffff) drop-shadow(-1px 0 0 #ffffff)
+    drop-shadow(0 1px 0 #ffffff) drop-shadow(0 -1px 0 #ffffff);
+}
+
+/* Geoman's default vertex handle is white with a #3388ff border. */
+.leaflet-container .marker-icon {
+  border-color: #046307;
+}
+
 /* ── Mobile Center-Anchored Crosshair ───────────────────────── */
 .map-crosshair {
   position: absolute;
@@ -358,7 +407,12 @@ html, body, #root {
   cursor: pointer;
   touch-action: manipulation;
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-  transition: transform 0.1s ease;
+  transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+
+.map-enlarge-btn:hover,
+.map-back-btn:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
 }
 
 .map-enlarge-btn:active,
@@ -446,6 +500,7 @@ html, body, #root {
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  position: relative;
 }
 
 .sheet-handle-bar {
@@ -458,6 +513,21 @@ html, body, #root {
 .sheet-title {
   font-size: 15px;
   font-weight: 600;
+}
+
+.sheet-chevron {
+  position: absolute;
+  right: var(--space-lg);
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-muted);
+  border-bottom: 2px solid var(--text-muted);
+  transform: rotate(45deg);
+  transition: transform 0.3s ease;
+}
+
+.sheet-chevron--expanded {
+  transform: rotate(225deg);
 }
 
 .sheet-content {
@@ -649,7 +719,7 @@ html, body, #root {
   background: #ffffff;
   border: 1px solid var(--upload-card-border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.07);
 }
 
 .upload-title {
@@ -661,6 +731,7 @@ html, body, #root {
 .upload-hint {
   margin-top: -4px;
   font-size: 13px;
+  line-height: 1.45;
   color: var(--upload-text-muted);
   text-align: center;
 }
@@ -826,6 +897,11 @@ html, body, #root {
   font-size: 12px;
   font-weight: 500;
   color: var(--upload-danger);
+  background: rgba(237, 93, 84, 0.08);
+  border: 1px solid rgba(237, 93, 84, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  line-height: 1.4;
 }
 
 /* Provenance hint: how the coordinates were obtained */
@@ -834,6 +910,11 @@ html, body, #root {
   font-size: 12px;
   font-weight: 500;
   color: var(--upload-text-muted);
+  background: var(--upload-canvas);
+  border: 1px solid var(--upload-card-border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  line-height: 1.35;
 }
 
 /* Status / Severity / Confidence — inline pills, one row */
@@ -971,6 +1052,11 @@ html, body, #root {
   border-left-color: var(--upload-emerald);
   border-radius: var(--radius-md);
   background: var(--upload-canvas);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.upload-photo-tile:hover {
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
 }
 
 .upload-photo-tile.is-analyzing {
@@ -1077,6 +1163,12 @@ html, body, #root {
   background: rgba(0, 0, 0, 0.06);
 }
 
+.upload-photo-tile-remove:hover,
+.mask-inspect-btn:hover {
+  background: rgba(15, 23, 42, 0.07);
+  color: var(--upload-text);
+}
+
 /* Opens MaskInspectorModal for this photo. Placed BEFORE .upload-photo-tile-remove
    (not after) so remove stays the terminal, rightmost action and never shifts
    position depending on whether this button is present — muscle memory
@@ -1141,6 +1233,12 @@ html, body, #root {
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.upload-mini-btn:hover {
+  border-color: var(--upload-emerald);
+  background: rgba(4, 99, 7, 0.04);
 }
 
 .upload-mini-btn:active {
@@ -1161,7 +1259,7 @@ html, body, #root {
 .upload-summary-note {
   margin: 0;
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--upload-text-muted);
 }
 
@@ -2161,10 +2259,10 @@ html, body, #root {
   gap: var(--space-sm);
   padding: 14px var(--space-lg);
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 14px;
   font-family: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 0.96rem;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
   min-height: 48px;
@@ -2192,13 +2290,13 @@ html, body, #root {
 }
 
 .btn-secondary {
-  background: var(--bg-primary);
+  background: #f3f4f6;
   color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
+  border: none;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
-
 .btn-secondary:hover:not(:disabled) {
-  border-color: var(--accent-emerald);
+  background: #e5e7eb; /* Darker grey */
 }
 
 .btn-accent {
@@ -2235,18 +2333,19 @@ html, body, #root {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: var(--space-lg);
-  box-shadow: var(--shadow-glow);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.12);
 }
 
 .action-title {
-  font-size: 1rem;
-  font-weight: 700;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--text-primary);
   margin-bottom: var(--space-sm);
 }
 
 .action-desc {
-  font-size: 0.8rem;
+  font-size: 0.86rem;
   color: var(--text-secondary);
   line-height: 1.5;
   margin-bottom: var(--space-md);
@@ -2271,18 +2370,24 @@ html, body, #root {
    pointer-events so its own (visually moved) box stays interactive. */
 .action-panel--tray {
   pointer-events: none;
+  padding: 12px 12px max(12px, env(safe-area-inset-bottom, 12px));
 }
 
 .tray {
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-glow);
+  width: min(100%, 560px);
+  margin: 0 auto;
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 18px 18px 18px 18px;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
   overflow: hidden;
-  transform: translateY(calc(100% - var(--sheet-peek)));
+  /* Collapsed peek matches .tray-handle-row's own height (64px) so the
+     drag-bar dot AND the "Heatmap Details" title stay visible while
+     collapsed, instead of the title being clipped. */
+  transform: translateY(calc(100% - 64px));
   transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
   touch-action: none;
 }
@@ -2298,53 +2403,54 @@ html, body, #root {
 .tray-handle-row {
   position: relative;
   flex-shrink: 0;
-  height: var(--sheet-peek);
+  /* Tall enough to fit the drag-bar dot (absolutely positioned near the
+     top, out of flow) plus the centered .tray-title below it without the
+     two colliding — see .tray-title. */
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-sm);
-  padding: 0 var(--space-lg);
+  padding: 0 18px;
   cursor: grab;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.tray-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding-top: 6px;
 }
 
 .tray-handle-bar {
   position: absolute;
-  top: 8px;
+  top: 9px;
   left: 50%;
   transform: translateX(-50%);
   width: 36px;
   height: 4px;
   border-radius: var(--radius-full);
-  background: var(--border-subtle);
-}
-
-.tray-title {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
+  background: rgba(17, 24, 39, 0.24);
 }
 
 .tray-chevron {
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid var(--text-muted);
-  border-bottom: 2px solid var(--text-muted);
-  transform: rotate(45deg);
-  transition: transform 0.3s ease;
+  display: none;
 }
 
 .tray-chevron--expanded {
-  transform: rotate(225deg);
+  display: none;
 }
 
 .tray-content {
-  padding: 0 var(--space-lg) var(--space-lg);
+  /* No padding here — HeatmapControls (the only thing this wraps) supplies
+     its own via .heatmap-controls, shared with the sidebar host. */
   overflow-y: auto;
   touch-action: pan-y;
-  max-height: min(46vh, 320px);
+  max-height: min(42vh, 320px);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2354,86 +2460,140 @@ html, body, #root {
   }
 }
 
-/* ── Opacity Slider ─────────────────────────────────────────── */
-.opacity-control {
+/* ── Opacity Slider (Pure Div Slider) ─────────────────────── */
+.opacity-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.opacity-header {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  margin-bottom: var(--space-md);
-  padding: var(--space-sm) 0;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .opacity-label {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.opacity-slider {
-  flex: 1;
-  height: 6px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--border-subtle);
-  border-radius: var(--radius-full);
-  outline: none;
-}
-
-.opacity-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent-emerald);
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(4, 99, 7, 0.3);
-}
-
-.opacity-value {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-  min-width: 32px;
-  text-align: right;
-}
-
-/* ── Heatmap Layer Toggle (General / per-disease) ─────────────
-   Segmented control, same visual language as .btn-tool — wraps onto a
-   second line rather than shrinking below the 48px touch target when three
-   or four layers are present. */
-.layer-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-  margin-bottom: var(--space-md);
-}
-
-.layer-toggle-btn {
-  flex: 1 1 auto;
-  min-height: 48px;
-  min-width: 48px;
-  padding: 10px var(--space-sm);
-  border: 1.5px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: all 0.2s ease;
-}
-
-.layer-toggle-btn:hover {
-  border-color: var(--accent-emerald);
   color: var(--text-primary);
 }
 
-.layer-toggle-btn--active {
-  background: var(--accent-emerald-glow);
-  border-color: var(--accent-emerald);
+.slider-container {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  margin: 14px 0 6px 0;
+  touch-action: none; /* Prevents page scrolling while dragging */
+}
+
+.slider-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--accent-emerald);
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.slider-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  background: #ffffff;
+  border: 3px solid var(--accent-emerald);
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+  cursor: pointer;
+  z-index: 2;
+}
+
+.slider-thumb:active {
+  transform: translate(-50%, -50%) scale(0.92);
+}
+
+.opacity-slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  margin-top: -4px;
+  padding: 0 2px;
+}
+
+.opacity-value {
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+  text-align: right;
+  font-weight: 700;
+}
+
+/* Disease layer switcher — one always-visible list, shared by every
+   viewport (previously a mobile-only popover here plus a separate desktop
+   <select> in ColorLegend; see HeatmapControls.jsx). */
+.heatmap-layer-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.heatmap-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.heatmap-layer-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.heatmap-layer-option.is-selected {
+  background: rgba(211, 244, 215, 0.9);
   color: var(--accent-emerald);
+  font-weight: 700;
+}
+
+.actions-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.btn-icon-plus {
+  font-size: 1.1rem;
+  line-height: 1;
+  font-weight: 700;
 }
 
 /* Custom draft preview pin marker (DraftMarker.jsx) */
@@ -2444,6 +2604,12 @@ html, body, #root {
 
 .pin-marker {
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+}
+
+/* Only present on a pin's first appearance (DraftMarker.jsx) — split from
+   .pin-marker above so a severity-driven color change, which rebuilds the
+   divIcon, doesn't replay the drop-in animation on every analysis result. */
+.pin-marker--drop {
   animation: pinDrop 0.4s ease-out;
 }
 
@@ -2665,68 +2831,50 @@ html, body, #root {
 }
 
 /* ── Color Legend ───────────────────────────────────────────── */
-.color-legend {
-  position: absolute;
-  top: 60px;
-  right: var(--space-md);
-  z-index: var(--z-overlay);
-  background: var(--bg-glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--space-sm) var(--space-md);
-  animation: fadeIn 0.4s ease-out;
-  width: 200px;
-}
-
-/* Disease layer filter — desktop only, see ColorLegend.jsx. Sits below the
-   gradient scale, collapsed into a dropdown so it fits a top-right floating
-   card instead of a full-width bottom panel. */
-.legend-layer-toggle {
+/* Wraps the "Legend" micro-heading + the .color-legend card itself, in
+   HeatmapControls.jsx — gap comes from flex here, not a margin that would
+   also push against the Disease Layers group below it. */
+.heatmap-legend-group {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: var(--space-sm);
-  padding-top: var(--space-sm);
-  border-top: 1px solid var(--border-subtle);
+  gap: 6px;
+  margin-bottom: 12px;
 }
 
-.legend-layer-toggle-label {
-  font-size: 0.6rem;
+.color-legend {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  padding: 10px 12px;
+  animation: fadeIn 0.4s ease-out;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+}
+
+.map-settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.map-settings-title {
+  margin: 0;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
-.legend-layer-toggle-select {
-  width: 100%;
-  padding: 6px var(--space-sm);
-  border: 1.5px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.2s ease;
-}
-
-.legend-layer-toggle-select:hover,
-.legend-layer-toggle-select:focus {
-  border-color: var(--accent-emerald);
-  outline: none;
-}
-
 .legend-title {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   display: block;
-  margin-bottom: var(--space-xs);
+  margin-bottom: 6px;
 }
 
 /* Gradient is set inline (style={{ background }}) from SES_COLORS in
@@ -2741,8 +2889,9 @@ html, body, #root {
 .legend-labels {
   display: flex;
   justify-content: space-between;
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   color: var(--text-muted);
+  font-weight: 600;
 }
 
 /* PDLA breakpoints for the active disease's own SES table — hidden on the
@@ -2751,9 +2900,9 @@ html, body, #root {
 .legend-pdla-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.55rem;
+  font-size: 0.58rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -2764,40 +2913,100 @@ html, body, #root {
   line-height: 1.4;
 }
 
-/* ── Sample History Sidebar (Step 3 — Heatmap) ────────────────── */
-/* Hidden by default behind a left-edge tab, matching .map-back-btn's
-   glass-pill language and header-clearance offset so it never renders
-   under the always-on-top .app-header. */
-.history-toggle-btn {
+/* ── Map Sidebar (Step 3 — Heatmap): bubble + tabbed panel ─────── */
+/* Hidden by default behind a left-edge bubble, matching .map-back-btn's
+   glass-pill language, but circular and vertically centered rather than
+   pinned under the header — see MapSidebar.jsx. */
+.sidebar-bubble {
   position: absolute;
-  top: max(64px, calc(52px + var(--space-sm)));
+  top: 50%;
   left: var(--space-sm);
+  transform: translateY(-50%);
+  z-index: calc(var(--z-modal) + 2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: left 0.25s ease, opacity 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sidebar-bubble:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+}
+
+.sidebar-bubble:active {
+  transform: translateY(-50%) scale(0.96);
+}
+
+/* Border-based chevron, same construction as .sheet-chevron — no icon
+   dependency. Points right (open) by default, flips to point left when
+   the panel is open. */
+.sidebar-bubble-arrow {
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(-45deg) translate(-1px, -1px);
+  transition: transform 0.25s ease;
+}
+
+.sidebar-bubble.is-open .sidebar-bubble-arrow {
+  transform: rotate(135deg) translate(-1px, -1px);
+}
+
+/* Mobile-only alternative to .sidebar-bubble — see MapSidebar.jsx's
+   docblock for why the two viewports get different toggles. Copies
+   .map-back-btn's glass-pill language (App.css, boundary step), matching
+   the pre-tabbed-sidebar "Sample History" button this restores. Only
+   rendered while closed; the backdrop tap / Escape close the panel once
+   it's open, same as every other mobile-only modal-ish surface here. */
+.sidebar-toggle-pill {
+  position: absolute;
+  /* Extra clearance (+11px) on top of the shared header clearance formula
+     — matches .map-sidebar's own top offset — so the pill doesn't sit
+     flush against the app-header above it. */
+  top: calc(max(64px, calc(52px + var(--space-sm))) + 11px);
+  /* Matches .app-header's own left offset, same reasoning as
+     .map-sidebar's left value — lines the pill up with the header above
+     it instead of sitting --space-sm further in. */
+  left: 12px;
   z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   gap: var(--space-xs);
-  min-height: 48px;
-  padding: 10px 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  background: var(--bg-glass);
+  min-height: 42px;
+  padding: 8px 14px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  /* Matches .app-header's own corner radius (18px), same reasoning as
+     .map-sidebar's border-radius. */
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
   transition: transform 0.1s ease;
 }
 
-.history-toggle-btn:active {
+.sidebar-toggle-pill:active {
   transform: scale(0.96);
 }
 
-.history-toggle-count {
+.sidebar-toggle-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2811,7 +3020,7 @@ html, body, #root {
   font-weight: 700;
 }
 
-.history-backdrop {
+.map-sidebar-backdrop {
   position: absolute;
   top: max(64px, calc(52px + var(--space-sm)));
   left: 0;
@@ -2822,57 +3031,110 @@ html, body, #root {
   animation: fadeIn 0.2s ease-out;
 }
 
-.history-sidebar {
+.map-sidebar {
   position: absolute;
-  top: max(64px, calc(52px + var(--space-sm)));
-  bottom: var(--space-sm);
-  left: var(--space-sm);
+  /* Breathing room above/below the panel, on top of the shared header
+     clearance formula every floating surface here uses — the panel was
+     sitting flush against the app-header. Top margin is 3px larger than
+     bottom so the extra weight of the header above reads as balanced
+     rather than the panel looking vertically centered-but-off. */
+  top: calc(max(64px, calc(52px + var(--space-sm))) + 11px);
+  bottom: calc(var(--space-sm) + 8px);
+  /* Matches .app-header's own left offset and corner radius (12px / 18px)
+     exactly, rather than the shared --space-sm/--radius-md tokens, so the
+     panel's left edge and corners visually line up with the header above
+     it instead of merely being "close". */
+  left: 12px;
   z-index: calc(var(--z-modal) + 1);
-  width: min(86vw, 340px);
+  width: var(--sidebar-w);
   display: flex;
   flex-direction: column;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
+  border-radius: 18px;
   box-shadow: var(--shadow-lg);
   transform: translateX(calc(-100% - var(--space-md)));
   transition: transform 0.25s ease;
   overflow: hidden;
 }
 
-.history-sidebar.is-open {
+.map-sidebar.is-open {
   transform: translateX(0);
 }
 
-.history-sidebar-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-sm);
-  padding: var(--space-md);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-shrink: 0;
+/* Rides the bubble out past the panel's right edge while open, with a real
+   gap (--space-sm) rather than sitting flush against it — 12px matches
+   .map-sidebar's own left offset (see its comment), so this is that same
+   12px plus the panel's width plus the gap. Only reachable in practice on
+   desktop — mobile renders .sidebar-toggle-pill instead of this bubble
+   (see MapSidebar.jsx) — but the rule stays viewport-generic and clamped
+   to `100vw - bubble width - gutter` regardless, so it can't be pushed
+   off-screen if --sidebar-w is ever widened past the point where a
+   desktop breakpoint is guaranteed to have room for it. */
+.sidebar-bubble.is-open {
+  left: min(
+    calc(12px + var(--sidebar-w) + var(--space-sm)),
+    calc(100vw - 44px - var(--space-sm))
+  );
 }
 
-.history-sidebar-title {
-  font-size: 1rem;
+.sidebar-tabs {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sidebar-tab {
+  flex: 1;
+  min-height: 48px;
+  padding: 0 var(--space-sm);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.sidebar-tab.is-active {
+  color: var(--accent-emerald);
+  border-bottom-color: var(--accent-emerald);
+}
+
+/* Mobile's tab-less .sidebar-tabs row — a plain title in place of the
+   desktop tab buttons, since History is the only pane there (see
+   MapSidebar.jsx's docblock). */
+.sidebar-tabs-title {
+  flex: 1;
+  text-align: center;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-primary);
 }
 
-.history-sidebar-subtitle {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin-top: 2px;
+/* Mirrors .sidebar-close-btn's width on the opposite side of the row, so
+   .sidebar-tabs-title's centering is relative to the full row rather than
+   just the space left over next to the close button. */
+.sidebar-tabs-spacer {
+  width: 48px;
+  flex-shrink: 0;
 }
 
-.history-close-btn {
+/* Mobile-only — see MapSidebar.jsx's docblock for why desktop doesn't get
+   one (the always-visible bubble already closes it there). */
+.sidebar-close-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   min-width: 48px;
   min-height: 48px;
-  margin: -12px -12px 0 0;
+  flex-shrink: 0;
   border: none;
   background: none;
   color: var(--text-secondary);
@@ -2882,10 +3144,58 @@ html, body, #root {
   touch-action: manipulation;
 }
 
+.map-sidebar-panes {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.map-sidebar-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.map-sidebar-pane[hidden] {
+  display: none;
+}
+
+/* Content wrapper for HeatmapControls when it renders inside this sidebar
+   (as opposed to HeatmapTray's mobile bottom sheet, which supplies its own
+   padding via .tray-content) — see HeatmapControls.jsx. */
+.heatmap-controls {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-md);
+}
+
 .history-sidebar-content {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   padding: 0;
+}
+
+.history-list-summary {
+  padding: var(--space-md) var(--space-md) 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-bubble,
+  .sidebar-bubble-arrow,
+  .map-sidebar,
+  .map-sidebar-backdrop {
+    transition: none;
+    animation: none;
+  }
 }
 
 .history-empty {
@@ -2895,30 +3205,22 @@ html, body, #root {
   text-align: center;
 }
 
-/* Tucked at the very end of the plant list, low-prominence on purpose —
-   this is a thesis-validation tool for the person running the survey, not
-   a farmer-facing action. Still a full 48px touch target and plain-text
-   label per the no-emoji / recognition-over-recall rules. */
+/* Tucked at the very end of the plant list. Visual styling comes from the
+   shared .btn/.btn-secondary/.btn-full classes (same family as the Heatmap
+   tab's Export PDF Report button) — this rule only supplies the inset that
+   .history-sidebar-content's own zero padding doesn't (see the "Horizontal
+   inset lives here" comment below), overriding .btn-full's width: 100%. */
 .history-loocv-btn {
-  display: block;
   width: calc(100% - 2 * var(--space-md));
   margin: var(--space-md);
-  min-height: 48px;
-  padding: 0 var(--space-sm);
-  border: 1px dashed var(--border-subtle);
-  border-radius: 10px;
-  background: none;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-align: center;
-  cursor: pointer;
-  touch-action: manipulation;
 }
 
-.history-loocv-btn:active {
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--text-secondary);
+/* Two-line label — "Export LOOCV Validation" / "(CSV + JSON)" — so the
+   parenthetical unit doesn't run the button's text past the sidebar width
+   on one cramped line. */
+.history-loocv-btn-label {
+  text-align: center;
+  line-height: 1.3;
 }
 
 /* Horizontal inset lives here, not on .history-sidebar-content, so the
@@ -3282,18 +3584,25 @@ html, body, #root {
     flex-direction: row;
   }
 
-  .color-legend {
-    top: 70px;
+  /* Widen the Step 3 sidebar now that it's the sole home for heatmap
+     controls (legend + layer list + opacity + actions), not just the
+     sample history list — 340px was tight for all of that stacked. */
+  :root {
+    --sidebar-w: 380px;
   }
 
-  /* On desktop the sidebar is a narrow ~340px column (see .history-sidebar),
-     not a modal takeover — suppress its dimming backdrop so sample nodes
-     stay clickable on the rest of the map while it's open (this is what
-     makes "click a different node while the sidebar is already open" work).
-     Escape and the × button remain as the close paths. Mobile keeps the
-     backdrop: there the sidebar is min(86vw, 340px), close to the full
-     screen, so it IS effectively modal. */
-  .history-backdrop {
+  /* On desktop the sidebar is a narrow column (see .map-sidebar), not a
+     modal takeover — suppress its dimming backdrop so sample nodes stay
+     clickable on the rest of the map while it's open (this is what makes
+     "click a different node while the sidebar is already open" work).
+     Escape and the bubble remain as the close paths (see .sidebar-bubble's
+     base rule, which already rides it to --sidebar-w's edge on every
+     viewport — this override's own offset used to differ from the base
+     rule's mobile behavior; now that both compute the same offset there is
+     nothing left to override). Mobile keeps the backdrop: there the
+     sidebar is min(86vw, 340px), close to the full screen, so it IS
+     effectively modal. */
+  .map-sidebar-backdrop {
     display: none;
   }
 }

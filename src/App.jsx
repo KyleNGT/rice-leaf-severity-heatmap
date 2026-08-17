@@ -5,12 +5,11 @@ import StepperBar from './components/StepperBar';
 import SamplePanel from './components/SamplePanel';
 import SampleSheet from './components/SampleSheet';
 import ActionPanel from './components/ActionPanel';
-import ColorLegend from './components/ColorLegend';
 import LoadingOverlay from './components/LoadingOverlay';
 import ImageAlignmentModal from './components/ImageAlignmentModal';
 import CameraCaptureModal from './components/CameraCaptureModal';
 import MaskInspectorModal from './components/MaskInspectorModal';
-import SampleHistorySidebar from './components/SampleHistorySidebar';
+import MapSidebar from './components/MapSidebar';
 import { useExifGps } from './hooks/useExifGps';
 import { useDeviceLocation } from './hooks/useDeviceLocation';
 import { useIsMobileViewport } from './hooks/useIsMobileViewport';
@@ -128,7 +127,7 @@ export default function App() {
   // ── Map <-> Sample History Selection (Heatmap step) ─────────
   // One shared selection object for BOTH directions of the link between a
   // map node and its Sample History sidebar row — see MapView.jsx and
-  // SampleHistorySidebar.jsx for how `origin` and `seq` are consumed.
+  // SampleHistoryList.jsx for how `origin` and `seq` are consumed.
   //   { id, origin: 'map' | 'sidebar', seq, lat?, lng? }
   const [selection, setSelection] = useState(null);
 
@@ -694,8 +693,11 @@ export default function App() {
     setLoadingProgress(0);
     setCurrentStep(STEPS.HEATMAP);
     // A previous run's layer selection may name a disease this run doesn't
-    // have (samples changed since); always land back on General.
+    // have (samples changed since); always land back on General. Opacity
+    // resets to the default (95%) too, so a regenerate can't strand the
+    // overlay at whatever a previous session's manual drag left it at.
     setHeatmapLayer(HEATMAP_LAYER_GENERAL);
+    setHeatmapOpacity(HEATMAP_DEFAULT_OPACITY);
 
     try {
       // Diseases actually present, and which channels to hand computeIDW —
@@ -954,6 +956,7 @@ export default function App() {
                 heatmapLayer={heatmapLayer}
                 heatmapOpacity={heatmapOpacity}
                 draftSample={draftSample}
+                draftSummary={draftSummary}
                 mapFullscreen={mapFullscreen}
                 drawingAction={drawingAction}
                 onDrawingActionChange={setDrawingAction}
@@ -1102,25 +1105,27 @@ export default function App() {
         isProcessing={isProcessing}
       />
 
-      {/* Color legend — visible when heatmap is shown */}
-      {currentStep === STEPS.HEATMAP && heatmapData && (
-        <ColorLegend
-          activeLayer={heatmapLayer}
-          layerName={availableLayers.find((l) => l.key === heatmapLayer)?.name}
-          availableLayers={availableLayers}
-          onLayerChange={setHeatmapLayer}
-        />
-      )}
-
-      {/* Sample history — hidden left sidebar, Heatmap step only */}
+      {/* Map sidebar — Heatmap step only. Tabbed: Heatmap controls (the
+          desktop home for what HeatmapTray shows on mobile) and Sample
+          History (the plant/photo audit trail). */}
       {currentStep === STEPS.HEATMAP && (
-        <SampleHistorySidebar
+        <MapSidebar
           samples={samples}
           selection={selection}
           onFocusOnMap={handleFocusOnMap}
           activeLayer={heatmapLayer}
           onInspectMasks={handleInspectMasks}
           onExportLoocv={handleExportLoocv}
+          onResumeSampling={handleResumeSampling}
+          heatmapOpacity={heatmapOpacity}
+          onOpacityChange={setHeatmapOpacity}
+          heatmapData={heatmapData}
+          availableLayers={availableLayers}
+          heatmapLayer={heatmapLayer}
+          onHeatmapLayerChange={setHeatmapLayer}
+          onExportReport={handleExportReport}
+          onReset={handleReset}
+          isProcessing={isProcessing}
         />
       )}
 
@@ -1164,7 +1169,7 @@ export default function App() {
           block for its position:fixed root and drags it around with the
           sheet instead of the viewport. Shared by both entry points
           (SamplePanel/SampleSheet's photo tiles, and
-          SampleHistorySidebar's rows) via the same handleInspectMasks
+          SampleHistoryList's rows) via the same handleInspectMasks
           callback. */}
       {maskViewer && <MaskInspectorModal {...maskViewer} onClose={handleCloseMaskViewer} />}
 

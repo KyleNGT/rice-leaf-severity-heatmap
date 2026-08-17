@@ -39,7 +39,15 @@ export default function StepperBar({ currentStep }) {
               <div
                 className={`stepper-item ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}`}
               >
-                {isCompleted && <div className="stepper-icon">✓</div>}
+                {isCompleted ? (
+                  <div className="stepper-icon" aria-hidden="true">
+                    ✓
+                  </div>
+                ) : (
+                  <div className="stepper-index" aria-hidden="true">
+                    {idx + 1}
+                  </div>
+                )}
                 <span className="stepper-label">{STEP_LABELS[step]}</span>
               </div>
               {idx < STEP_ORDER.length - 1 && (
