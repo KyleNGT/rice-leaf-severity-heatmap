@@ -160,12 +160,15 @@ export default function MapView({
         // pan. See selection.origin below.
         focusTarget={isHeatmap && selection?.origin === 'sidebar' ? selection : null}
         focusOffsetX={isMobile ? 0 : HISTORY_SIDEBAR_OFFSET_PX}
+        // Locks bearing to 0 for the duration of an active "Edit Shape" —
+        // see the touchRotate effect's docblock in MapController.
+        drawingAction={drawingAction}
       />
 
       {/* Reset-to-north — mobile only (rotation is a touch gesture; see
           MapView's rotate options above), and only visible while the map is
-          actually rotated (Sampling/Heatmap steps; see MapController's
-          touchRotate gate) */}
+          actually rotated (every step except an active boundary edit; see
+          MapController's touchRotate gate) */}
       <MapBearingControl isMobile={isMobile} />
 
       {/* Boundary drawing tool — active only during boundary step */}

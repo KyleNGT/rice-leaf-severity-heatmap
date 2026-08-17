@@ -15,10 +15,10 @@ import L from 'leaflet';
  * favor of ActionPanel-style buttons — the plugin's own control is
  * explicitly disabled in MapView (rotateControl={false}).
  *
- * Bearing can only be nonzero during Sampling/Heatmap (MapController
- * forces it back to 0 on every other step), so no separate step check
- * is needed here — this button simply tracks the map's own 'rotate'
- * event and hides itself whenever bearing rounds to 0.
+ * Bearing can be nonzero on any step except while "Edit Shape" is active
+ * within Boundary (MapController forces it back to 0 there), so no separate
+ * step/edit-mode check is needed here — this button simply tracks the map's
+ * own 'rotate' event and hides itself whenever bearing rounds to 0.
  *
  * Desktop-only exception: rotation itself is gated to the touch gesture
  * (see MapController — shiftKeyRotate/rotateControl are both disabled in

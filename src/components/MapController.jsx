@@ -39,6 +39,7 @@ export default function MapController({
   mapFullscreen,
   focusTarget,
   focusOffsetX = 0,
+  drawingAction,
 }) {
   const map = useMap();
   // The focusTarget effect's deps include focusOffsetX, which flips whenever
@@ -67,12 +68,18 @@ export default function MapController({
     };
   }, [map, currentStep, isMobile, mapFullscreen]);
 
-  // Two-finger map rotation (leaflet-rotate) — allowed only in Sampling and
-  // Heatmap, never in Boundary. Geoman explicitly does not support drawing
-  // or editing on a rotated map (https://github.com/geoman-io/leaflet-geoman/discussions/1097),
-  // so rather than betting on polygons being the one shape that happens to
-  // still work, bearing is forced back to 0 the moment the step leaves
-  // Sampling/Heatmap — a rotated map is never handed to Geoman.
+  // Two-finger map rotation (leaflet-rotate) — allowed on every step, with
+  // one carve-out: Boundary is the one step that hands the map to Geoman,
+  // and the geoman-io team explicitly do not support drawing/editing on a
+  // rotated map (https://github.com/geoman-io/leaflet-geoman/discussions/1097).
+  // MobileBoundaryDrawer's own point placement is bearing-agnostic (it just
+  // reads map.getCenter()), so that part is safe regardless — but "Edit
+  // Shape" (ActionPanel → drawingAction 'edit' → map.pm.enableGlobalEditMode())
+  // drags Geoman's own vertex handles, which IS the untested combination.
+  // Rather than bet on it, bearing is forced back to 0 for the duration of
+  // an active edit — Geoman never gets handed a rotated map to edit, even
+  // though Boundary itself is otherwise a rotation-allowed step.
+  //
   // installBearingSnap is idempotent and cheap to call every render; doing it
   // here (rather than a one-time effect) keeps it beside the gating logic it
   // exists to support.
@@ -80,14 +87,14 @@ export default function MapController({
     if (!map?.touchRotate) return;
     installBearingSnap(map);
 
-    const allowed = currentStep === STEPS.SAMPLING || currentStep === STEPS.HEATMAP;
-    if (allowed) {
+    const isEditingBoundary = currentStep === STEPS.BOUNDARY && drawingAction === 'edit';
+    if (!isEditingBoundary) {
       map.touchRotate.enable();
     } else {
       map.touchRotate.disable();
       if (map.getBearing() !== 0) map.setBearing(0);
     }
-  }, [map, currentStep]);
+  }, [map, currentStep, drawingAction]);
 
   // Fit + lock the map to the field boundary while sampling
   useEffect(() => {
