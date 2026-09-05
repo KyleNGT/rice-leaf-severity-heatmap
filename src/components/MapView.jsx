@@ -22,7 +22,6 @@ import BoundaryDrawer from './BoundaryDrawer';
 import MobileBoundaryDrawer from './MobileBoundaryDrawer';
 import MapController from './MapController';
 import MapBearingControl from './MapBearingControl';
-import MapLocateControl from './MapLocateControl';
 import SampleMarker from './SampleMarker';
 import HeatmapOverlay from './HeatmapOverlay';
 import DraftMarker from './DraftMarker';
@@ -179,11 +178,6 @@ export default function MapView({
           actually rotated (every step except an active boundary edit; see
           MapController's touchRotate gate) */}
       <MapBearingControl isMobile={isMobile} />
-
-      {/* Recenter-on-me — see LiveLocationMarker below for the dot itself;
-          this is the one way back once it's walked off-screen, since the
-          marker deliberately never auto-pans the map. */}
-      <MapLocateControl isMobile={isMobile} position={livePosition} />
 
       {/* Boundary drawing tool — active only during boundary step */}
       <BoundaryDrawer

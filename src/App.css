@@ -487,49 +487,6 @@ html, body, #root {
   transition: transform 0.1s linear;
 }
 
-/* ── Recenter-on-Me Button (MapLocateControl.jsx) ─────────────── */
-/* Stacked directly above the compass button's own fixed footprint
-   (48px min-height + 20px vertical padding + a small gap) rather than a
-   shared flex wrapper — the compass button only renders while bearing is
-   nonzero, so the two are independent, differently-conditioned overlays
-   that happen to share this corner; a fixed offset is simpler than
-   coordinating layout between two components that don't share a parent. */
-.map-locate-btn-wrapper {
-  position: absolute;
-  z-index: 750;
-  bottom: calc(var(--space-sm) + 68px + var(--space-xs));
-  right: var(--space-sm);
-}
-
-.map-locate-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  min-height: 48px;
-  padding: 10px 14px;
-  border: 1px solid #e5e7eb;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--accent-blue);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
-  transition: transform 0.12s ease, box-shadow 0.2s ease;
-}
-
-.map-locate-btn:hover {
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
-}
-
-.map-locate-btn:active {
-  transform: scale(0.96);
-}
-
 /* ── Live Location Marker (LiveLocationMarker.jsx) ────────────── */
 /* The "you are here" dot. Lives in Leaflet's markerPane, which
    leaflet-rotate keeps in norotatePane (see CLAUDE.md's Map Rotation

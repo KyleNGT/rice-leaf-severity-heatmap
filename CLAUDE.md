@@ -212,7 +212,7 @@ Position comes from `useLiveLocation.js`, a `navigator.geolocation.watchPosition
 
 The marker renders via react-leaflet's default `markerPane`, same as `SampleMarker`/`DraftMarker` — per the Map Rotation section above, leaflet-rotate keeps `markerPane` inside `norotatePane`, so it stays upright and correctly anchored regardless of the map's current bearing with no extra pane handling needed.
 
-**The map never auto-pans onto the live position.** `MapLocateControl.jsx` (modeled directly on `MapBearingControl.jsx`) is the one way back once the dot has walked off-screen — a themed recenter button, mobile-only. During Sampling, `MapController.jsx`'s `setMaxBounds` lock (`SAMPLING_PAN_BOUNDS_PADDING`) means a farmer standing well outside the field gets Leaflet's own `_limitCenter` clamping the recenter as close as the lock allows rather than a hard no-op.
+**The map never auto-pans onto the live position, and there is no recenter-on-me button.** The dot is display-only; if it walks off-screen the farmer pans the map back by hand. A themed "My Location" recenter button (`MapLocateControl.jsx`) existed briefly and was removed to keep the feature to just the position dot — the live location marker is a passive navigational aid, not a map-control surface.
 
 ## Known Limitations (Prototype Scope)
 
