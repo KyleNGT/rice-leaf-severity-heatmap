@@ -4,9 +4,13 @@
  * ============================================================
  * The only DOM-touching piece of the LOOCV feature — loocv.js itself is
  * pure and Node-runnable. Wires runLOOCValidation()/optimizePowerParameter()
- * to two downloaded files (residuals CSV, summary+sweep JSON) and two
- * console.table() dumps, triggered from the button SampleHistorySidebar.jsx
+ * to three downloaded files (residuals CSV, metrics CSV, summary+sweep JSON)
+ * and two console.table() dumps, triggered from the button SampleHistorySidebar.jsx
  * renders at the bottom of its plant list (see App.jsx's handleExportLoocv).
+ *
+ * The metrics CSV carries the same two tables as the console.table() dumps
+ * (plus a run header and best-power-per-channel) — needed because the mobile
+ * browsers this app is field-tested on have no devtools console.
  *
  * There is no existing generic file-download helper in this codebase —
  * exportReport.js relies on jsPDF's own doc.save() — so this file owns a
@@ -19,6 +23,7 @@ import {
   loocvSummaryRows,
   loocvSweepRows,
   loocvResidualsCsv,
+  loocvMetricsCsv,
   loocvSummaryJson,
 } from './loocv.js';
 import { IDW_POWER } from '../constants/constants';
@@ -63,6 +68,7 @@ export function exportLoocvArtifacts(samples) {
 
   const stamp = todayStamp();
   downloadTextFile(`loocv-residuals-${stamp}.csv`, loocvResidualsCsv(result), 'text/csv');
+  downloadTextFile(`loocv-metrics-${stamp}.csv`, loocvMetricsCsv(result, sweep), 'text/csv');
   downloadTextFile(
     `loocv-summary-${stamp}.json`,
     JSON.stringify(loocvSummaryJson(samples, result, sweep), null, 2),

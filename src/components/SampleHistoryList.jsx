@@ -262,7 +262,7 @@ export default function SampleHistoryList({
           <span className="history-loocv-btn-label">
             Export LOOCV Validation
             <br />
-            (CSV + JSON)
+            (2 CSV + JSON)
           </span>
         </button>
       )}

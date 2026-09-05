@@ -247,6 +247,18 @@ export function loocvSweepRows(sweep) {
   }));
 }
 
+/**
+ * Escape one value for a CSV cell: wrap in double quotes (doubling any
+ * embedded quote) when the stringified value contains a comma, a quote, a
+ * newline, or leading/trailing whitespace. Channel labels like
+ * `(pooled, all channels)` contain a comma, so an unquoted `.join(',')`
+ * would silently split them across two columns.
+ */
+function csvCell(value) {
+  const s = String(value);
+  return /[",\n]|^\s|\s$/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 /** CSV text of every per-point, per-channel residual — one row per fold. */
 export function loocvResidualsCsv(result) {
   const header = 'plant_index,plant_id,lat,lng,disease,actual_pdla,predicted_pdla,error,abs_error';
@@ -261,9 +273,68 @@ export function loocvResidualsCsv(result) {
       r.predicted.toFixed(2),
       r.error.toFixed(2),
       r.absError.toFixed(2),
-    ].join(',')
+    ]
+      .map(csvCell)
+      .join(',')
   );
   return [header, ...lines].join('\n');
+}
+
+/**
+ * CSV rendering of the two tables exportLoocv.js also dumps via
+ * console.table() (the per-channel summary and the power sweep), plus a
+ * third best-power-per-channel section and a `#`-comment run header. This
+ * exists because the mobile browsers this app is field-tested on expose no
+ * devtools console, so the console dumps are invisible where they matter.
+ *
+ * Rows are taken from loocvSummaryRows()/loocvSweepRows() — the same
+ * helpers console.table() and scripts/loocv.js use — so the CSV can never
+ * drift from the printed tables. The pooled row's em-dash meanActual
+ * becomes an empty cell (numeric column).
+ */
+export function loocvMetricsCsv(result, sweep) {
+  const lines = [];
+
+  lines.push(`# generated_at,${new Date().toISOString()}`);
+  lines.push(`# n,${result.n}`);
+  lines.push(`# power,${result.power}`);
+  lines.push(`# optimal_power,${sweep.optimalPower}`);
+  lines.push(`# optimal_rmse,${sweep.optimalRmse.toFixed(2)}`);
+  lines.push('# errors are PDLA percentage points, not banded SES');
+  lines.push('');
+
+  lines.push('table,channel,n,mae,rmse,mean_actual,degenerate');
+  for (const row of loocvSummaryRows(result)) {
+    lines.push(
+      [
+        'summary',
+        row.channel,
+        row.n,
+        row.mae,
+        row.rmse,
+        row.meanActual === '—' ? '' : row.meanActual,
+        row.degenerate,
+      ]
+        .map(csvCell)
+        .join(',')
+    );
+  }
+  lines.push('');
+
+  lines.push('table,power,mae,rmse,is_optimal');
+  for (const row of loocvSweepRows(sweep)) {
+    lines.push(['sweep', row.power, row.mae, row.rmse, row.isOptimal].map(csvCell).join(','));
+  }
+  lines.push('');
+
+  lines.push('table,channel,best_power,rmse');
+  for (const [channel, best] of Object.entries(sweep.bestPerChannel)) {
+    lines.push(
+      ['best_power_per_channel', channel, best.power, best.rmse.toFixed(2)].map(csvCell).join(',')
+    );
+  }
+
+  return lines.join('\n');
 }
 
 /**
