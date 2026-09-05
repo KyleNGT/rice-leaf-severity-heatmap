@@ -396,6 +396,24 @@ export const MAP_BEARING_SNAP_DEG = 4;
 /** Max time to wait for a live GPS fix during camera capture. */
 export const GEO_TIMEOUT_MS = 10000;
 
+/**
+ * `maximumAge` for the continuous live-location watch (Boundary/Sampling
+ * "you are here" marker) — deliberately looser than GEO_TIMEOUT_MS's
+ * one-shot camera fix (maximumAge: 0 there). A tracking watch fires
+ * repeatedly for as long as the step is open, so letting the OS serve a
+ * fix up to this old meaningfully reduces GPS power draw with no
+ * perceptible staleness on a walking farmer.
+ */
+export const LIVE_LOCATION_MAX_AGE_MS = 1000;
+
+/**
+ * Minimum change (degrees) before a new compass/heading reading is
+ * applied to the live-location marker's cone. Raw DeviceOrientation
+ * output is noisy enough at rest to otherwise re-render on every event
+ * even while the phone isn't actually turning.
+ */
+export const LIVE_LOCATION_HEADING_DEADBAND_DEG = 2;
+
 // ── ML Inference API ─────────────────────────────────────────
 /**
  * Base origin for the inference API (backend/server.py). Empty by default,
