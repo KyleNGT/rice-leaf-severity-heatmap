@@ -790,9 +790,9 @@ export default function App() {
   // ── LOOCV Validation Export ──────────────────────────────────
   // Unlike the PDF report, this is milliseconds of pure arithmetic (no
   // image decoding) — no isProcessing overlay needed. See exportLoocv.js.
-  const handleExportLoocv = useCallback((sampleSet) => {
+  const handleExportLoocv = useCallback(async (sampleSet) => {
     try {
-      exportLoocvArtifacts(sampleSet);
+      await exportLoocvArtifacts(sampleSet);
     } catch (err) {
       console.error('LOOCV export failed:', err);
     }
