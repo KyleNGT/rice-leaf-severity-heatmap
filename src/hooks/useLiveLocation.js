@@ -19,7 +19,7 @@ import { GEO_TIMEOUT_MS, LIVE_LOCATION_MAX_AGE_MS } from '../constants/constants
  * server, `isSupported` is false and no watch is ever started.
  *
  * Returns { position, error, isSupported }:
- *   position — { lat, lng, accuracy, gpsHeading, timestamp } or null
+ *   position — { lat, lng, accuracy, timestamp } or null
  *   error    — a user-facing message string, or null
  */
 export function useLiveLocation(enabled) {
@@ -45,7 +45,6 @@ export function useLiveLocation(enabled) {
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
           accuracy: pos.coords.accuracy,
-          gpsHeading: Number.isFinite(pos.coords.heading) ? pos.coords.heading : null,
           timestamp: pos.timestamp,
         });
       },

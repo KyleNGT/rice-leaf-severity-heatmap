@@ -531,57 +531,17 @@ html, body, #root {
 }
 
 /* ── Live Location Marker (LiveLocationMarker.jsx) ────────────── */
-/* The "you are here" dot + heading cone. Lives in Leaflet's markerPane,
-   which leaflet-rotate keeps in norotatePane (see CLAUDE.md's Map
-   Rotation section) — this marker never rotates with the tiles; only the
-   cone's own inline transform (set in JS as heading - map.getBearing())
-   rotates, so it always points at the true-world direction of travel
-   regardless of the map's current bearing. */
-.live-location-icon {
-  /* Glides between GPS ticks instead of teleporting — see the
-     zoomstart/zoomend listeners in LiveLocationMarker.jsx that suspend
-     this during a pinch-zoom, since Leaflet drives its own zoom
-     animation through this same transform property. */
-  transition: transform 0.4s linear;
-}
-
-.live-location-icon--no-transition {
-  transition: none;
-}
-
-.live-location-marker {
-  position: relative;
-  width: 60px;
-  height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+/* The "you are here" dot. Lives in Leaflet's markerPane, which
+   leaflet-rotate keeps in norotatePane (see CLAUDE.md's Map Rotation
+   section), so it stays upright and correctly anchored regardless of the
+   map's current bearing with no extra handling needed. */
 .live-location-dot {
-  position: absolute;
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background: var(--accent-blue);
   border: 2px solid #ffffff;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.35), 0 1px 4px rgba(15, 23, 42, 0.3);
-}
-
-.live-location-cone {
-  position: absolute;
-  top: 0;
-  left: 0;
-  /* Rotation + visibility are set inline, per-frame, from JS
-     (LiveLocationMarker.jsx's applyRotation) — never re-rendered through
-     React, so the icon itself can stay a stable, unmounted-once node. */
-  transition: transform 0.15s linear, opacity 0.15s ease;
-  pointer-events: none;
-}
-
-.live-location-cone path {
-  fill: var(--accent-blue);
-  opacity: 0.55;
 }
 
 /* ── Map Footer (Step 2 — sample counter + Generate Heatmap) ─── */

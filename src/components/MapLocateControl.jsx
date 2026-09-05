@@ -13,9 +13,7 @@ import L from 'leaflet';
  *
  * The live-location marker deliberately never auto-pans the map (see
  * CLAUDE.md's Live Location section) — this button is the one way back
- * once the dot has walked off-screen, and it doubles as the user-gesture
- * iOS requires before DeviceOrientationEvent.requestPermission() may be
- * called (that call throws from inside a useEffect).
+ * once the dot has walked off-screen.
  *
  * If the farmer is standing outside the Sampling step's padded max
  * bounds (MapController's setMaxBounds lock), Leaflet's own
@@ -24,7 +22,7 @@ import L from 'leaflet';
  * nothing", it just pans as close to the real position as the lock
  * permits.
  */
-export default function MapLocateControl({ isMobile, position, needsPermission, onRequestPermission }) {
+export default function MapLocateControl({ isMobile, position }) {
   const map = useMap();
   const wrapperRef = useRef(null);
 
@@ -37,17 +35,12 @@ export default function MapLocateControl({ isMobile, position, needsPermission, 
 
   if (!isMobile || !position) return null;
 
-  const handleClick = () => {
-    if (needsPermission) onRequestPermission();
-    map.setView([position.lat, position.lng], map.getZoom());
-  };
-
   return (
     <div className="map-locate-btn-wrapper" ref={wrapperRef}>
       <button
         type="button"
         className="map-locate-btn"
-        onClick={handleClick}
+        onClick={() => map.setView([position.lat, position.lng], map.getZoom())}
         aria-label="Center map on my location"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">

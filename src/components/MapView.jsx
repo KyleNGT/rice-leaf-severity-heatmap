@@ -29,7 +29,6 @@ import DraftMarker from './DraftMarker';
 import LiveLocationMarker from './LiveLocationMarker';
 import { useIsMobileViewport } from '../hooks/useIsMobileViewport';
 import { useLiveLocation } from '../hooks/useLiveLocation';
-import { useDeviceHeading } from '../hooks/useDeviceHeading';
 
 /**
  * TEMPORARY — dev/testing only. Lets a tap anywhere on the map set the
@@ -92,10 +91,6 @@ export default function MapView({
   // rather than just hiding an icon while a watch keeps running.
   const showLiveLocation = currentStep === STEPS.BOUNDARY || currentStep === STEPS.SAMPLING;
   const { position: livePosition } = useLiveLocation(showLiveLocation);
-  const { heading, needsPermission, requestPermission } = useDeviceHeading(
-    showLiveLocation,
-    livePosition?.gpsHeading ?? null
-  );
   // Node click-to-select only makes sense once the Sample History sidebar
   // exists to receive it (Heatmap step). Earlier steps keep today's
   // click-to-open popup on every node — see SampleMarker's docblock.
@@ -185,15 +180,10 @@ export default function MapView({
           MapController's touchRotate gate) */}
       <MapBearingControl isMobile={isMobile} />
 
-      {/* Recenter-on-me — see LiveLocationMarker below for the dot/cone
-          itself; this is the one way back once it's walked off-screen,
-          since the marker deliberately never auto-pans the map. */}
-      <MapLocateControl
-        isMobile={isMobile}
-        position={livePosition}
-        needsPermission={needsPermission}
-        onRequestPermission={requestPermission}
-      />
+      {/* Recenter-on-me — see LiveLocationMarker below for the dot itself;
+          this is the one way back once it's walked off-screen, since the
+          marker deliberately never auto-pans the map. */}
+      <MapLocateControl isMobile={isMobile} position={livePosition} />
 
       {/* Boundary drawing tool — active only during boundary step */}
       <BoundaryDrawer
@@ -272,7 +262,7 @@ export default function MapView({
 
       {/* "You are here" — display-only navigational aid, Boundary +
           Sampling only. Never feeds into any plant's recorded coordinates. */}
-      {showLiveLocation && <LiveLocationMarker position={livePosition} heading={heading} />}
+      {showLiveLocation && <LiveLocationMarker position={livePosition} />}
     </MapContainer>
   );
 }

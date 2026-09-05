@@ -406,14 +406,6 @@ export const GEO_TIMEOUT_MS = 10000;
  */
 export const LIVE_LOCATION_MAX_AGE_MS = 1000;
 
-/**
- * Minimum change (degrees) before a new compass/heading reading is
- * applied to the live-location marker's cone. Raw DeviceOrientation
- * output is noisy enough at rest to otherwise re-render on every event
- * even while the phone isn't actually turning.
- */
-export const LIVE_LOCATION_HEADING_DEADBAND_DEG = 2;
-
 // ── ML Inference API ─────────────────────────────────────────
 /**
  * Base origin for the inference API (backend/server.py). Empty by default,
